@@ -3,6 +3,17 @@ name = "vera"
 version = "0.1.0"
 # author = "Coddeus"
 edition = "2021"
+license = "GPL-3.0-only"
+description = "Vulkan Engine in Rust for Animation"
+documentation = "https://docs.rs/vera"
+repository = "https://github.com/Coddeus/vera"
+readme = "README.md"
+keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
+categories = ["graphics", "multimedia::video", "rendering::engine"]
+
+exclude = [
+    "examples",
+]
 
 [dependencies]
 winit     = "0.20.0"
