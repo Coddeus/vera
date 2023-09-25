@@ -1,2 +1,3 @@
-# vera
-Vulkan Engine in Rust for Animation
+# VERA
+Vulkan Engine in Rust for Animation.  
+In early development.
