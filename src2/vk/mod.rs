@@ -936,7 +936,15 @@ impl VulkanApp {
     }
 }
 
-pub fn main() {
+pub fn preview(elements: Vec<f32>) {
+
+    let event_loop = EventLoop::new();
+
+    let vulkan_app = VulkanApp::new(&event_loop);
+    vulkan_app.main_loop(event_loop);
+}
+
+pub fn render(elements: Vec<f32>) {
 
     let event_loop = EventLoop::new();
 

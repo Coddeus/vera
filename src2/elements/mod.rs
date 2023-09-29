@@ -34,11 +34,17 @@ pub trait Vertind {
 }
 
 /// Transformation presets
-pub enum Transformation {
+pub enum Transformations {
     Move,
     Rotate,
     Scale,
-    Color
+    Color,
+}
+
+pub struct Transformation {
+    from: f32,
+    to: f32,
+    ty: Transformations,
 }
 
 /// Transition timing presets

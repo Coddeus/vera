@@ -16,21 +16,13 @@ exclude = [
 ]
 
 [dependencies]
-winit     = "0.20.0"
-ash       = "0.29.0"
-num       = "0.2"
-cgmath    = "0.17.0"
-image     = "0.22"
-memoffset = "0.5.1"
-tobj      = "0.1.10"
+vulkano = "0.33.0"
+vulkano-shaders = "0.33.0"
+sdl2 = { version = "0.35.2", features = ["bundled"] }
+image = "0.24"
 
-[dependencies.bitflags]
-version = ">= 1.0.4"
+[profile.dev]
+opt-level = 1
 
-[target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.17.0"
-cocoa = "0.18.4"
-objc  = "0.2.5"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3.5", features = ["windef", "libloaderapi"] }
+[profile.release]
+opt-level = 3
