@@ -18,8 +18,10 @@ exclude = [
 [dependencies]
 vulkano = "0.33.0"
 vulkano-shaders = "0.33.0"
-sdl2 = { version = "0.35.2", features = ["bundled"] }
+vulkano-win = "0.33.0"
+# sdl2 = { version = "0.35.2", features = ["bundled"] }
 image = "0.24"
+winit = "0.28.7"
 
 [profile.dev]
 opt-level = 1
