@@ -12,7 +12,7 @@ pub struct Veratex {
 
 impl Veratex {
     pub fn new(x: f32, y: f32, entity_id: u32) -> Self {
-        Veratex { position: [x, y], entity_id: entity_id }
+        Veratex { position: [x, y], entity_id }
     }
 }
 
