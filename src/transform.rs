@@ -12,7 +12,7 @@ pub struct UniformData {
     /// ```
     model_matrix: [f32 ; 12],
 
-    // color: [f32 ; 3],
+    // color: [f32 ; 4],
 }
 
 impl UniformData {

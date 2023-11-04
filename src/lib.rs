@@ -7,13 +7,14 @@ pub use transform::*;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer,
-    PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
+    PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents, CommandBufferExecFuture,
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{
@@ -33,9 +34,9 @@ use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpa
 use vulkano::shader::ShaderModule;
 use vulkano::swapchain::{
     self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-    SwapchainPresentInfo,
+    SwapchainPresentInfo, PresentFuture, SwapchainAcquireFuture,
 };
-use vulkano::sync::future::FenceSignalFuture;
+use vulkano::sync::future::{FenceSignalFuture, JoinFuture};
 use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
@@ -43,14 +44,19 @@ use vulkano_win::VkSurfaceBuild;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
+use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
 
 pub struct Vera {
+    event_loop: EventLoop<()>,
+    vk: Vk,
+}
+
+struct Vk {
     // -----
     library: Arc<vulkano::VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
     instance: Arc<Instance>,
-    event_loop: EventLoop<()>,
     surface: Arc<Surface>,
     window: Arc<Window>,
 
@@ -94,10 +100,11 @@ pub struct Vera {
     drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
 
     // -----
-    window_resized: bool, // Should not be possible
+    window_resized: bool,
     recreate_swapchain: bool,
     frames_in_flight: usize,
     previous_fence_i: u32,
+    fences: Vec<Option<Arc<FenceSignalFuture<PresentFuture<CommandBufferExecFuture<JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>>>>>>>,
 }
 
 const PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
@@ -175,8 +182,8 @@ mod fs {
 // }
 
 impl Vera {
-    /// Sets up Vulkan for Vera
-    pub fn create(width: u32, height: u32) -> Self {
+    /// Sets up Vera with Vulkan
+    pub fn create() -> Self {
         // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
@@ -194,8 +201,8 @@ impl Vera {
 
         let event_loop = EventLoop::new();
         let surface = WindowBuilder::new()
-            .with_inner_size(LogicalSize { width, height })
-            .with_resizable(false)
+            .with_inner_size(LogicalSize { width: 800, height: 600 })
+            .with_resizable(true)
             .with_title(PKG_NAME)
             .with_transparent(false)
             .build_vk_surface(&event_loop, instance.clone())
@@ -601,60 +608,70 @@ impl Vera {
             .collect();
 
         // ------------------------------------------
+
+        let frames_in_flight: usize = images.len();
+        let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
+        let previous_fence_i: u32 = 0;
+        let window_resized: bool = false;
+        let recreate_swapchain: bool = false;
+
         Vera {
-            //
-            library,
-            required_extensions,
-            instance,
             event_loop,
-            surface,
-            window,
+            vk: Vk {
+                //
+                library,
+                required_extensions,
+                instance,
+                surface,
+                window,
 
-            device_extensions,
-            physical_device,
-            queue_family_index,
-            device,
-            queue,
+                device_extensions,
+                physical_device,
+                queue_family_index,
+                device,
+                queue,
 
-            swapchain,
-            images,
-            render_pass,
-            framebuffers,
+                swapchain,
+                images,
+                render_pass,
+                framebuffers,
 
-            // -----
-            memory_allocator,
-            command_buffer_allocator,
-            // descriptor_set_allocator,
+                // -----
+                memory_allocator,
+                command_buffer_allocator,
+                // descriptor_set_allocator,
 
-            // -----
-            max_uniform_buffer_size,
-            max_storage_buffer_size,
+                // -----
+                max_uniform_buffer_size,
+                max_storage_buffer_size,
 
-            // -----
-            vertex_buffer,
+                // -----
+                vertex_buffer,
 
-            // -----
-            staging_uniform_buffer,
-            uniform_buffer,
-            uniform_copy_command_buffer,
-            // uniform_update_cs,
-            // uniform_update_pipeline,
-            // uniform_update_command_buffer,
-            descriptor_set,
-            descriptor_set_layout_index,
+                // -----
+                staging_uniform_buffer,
+                uniform_buffer,
+                uniform_copy_command_buffer,
+                // uniform_update_cs,
+                // uniform_update_pipeline,
+                // uniform_update_command_buffer,
+                descriptor_set,
+                descriptor_set_layout_index,
 
-            // -----
-            drawing_vs,
-            drawing_fs,
-            drawing_viewport,
-            drawing_pipeline,
-            drawing_command_buffers,
+                // -----
+                drawing_vs,
+                drawing_fs,
+                drawing_viewport,
+                drawing_pipeline,
+                drawing_command_buffers,
 
-            // -----
-            window_resized: false,
-            recreate_swapchain: false,
-            frames_in_flight: 0,
-            previous_fence_i: 0,
+                // -----
+                window_resized,
+                recreate_swapchain,
+                frames_in_flight,
+                previous_fence_i,
+                fences,
+            }
         }
     }
 
@@ -708,18 +725,32 @@ impl Vera {
     //         .collect()
     // }
 
-    pub fn show(mut self) {
-        self.frames_in_flight = self.images.len();
-        let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; self.frames_in_flight];
-        self.previous_fence_i = 0;
+    pub fn dev(&mut self) {
+        'dev: loop {
+            match self.vk.run(&mut self.event_loop) {
+                0 => {
+                    break 'dev;
+                }
+                1 => {
+                    
+                }
+                _ => {
+                    panic!("Unexpected return code when running the main loop");
+                }
+            }
+        }
+    }
+}
 
-        self.event_loop
-            .run(move |event, _, control_flow| match event {
+impl Vk {
+    fn run(&mut self, event_loop: &mut EventLoop<()> /*, &elements: Elements */) -> i32 {
+        event_loop
+            .run_return(move |event, _, control_flow| match event {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => {
-                    *control_flow = ControlFlow::Exit;
+                    *control_flow = ControlFlow::ExitWithCode(0);
                 }
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
@@ -728,10 +759,15 @@ impl Vera {
                     self.window_resized = true;
                 }
                 Event::MainEventsCleared => {
+                    // if elements.ended() {
+                    //     *control_flow = ControlFlow::ExitWithCode(1);
+                    // }
                     if self.window_resized || self.recreate_swapchain {
                         self.recreate_swapchain = false;
 
-                        let new_dimensions = self.window.inner_size();
+                        let mut new_dimensions = self.window.inner_size();
+                        new_dimensions.width = new_dimensions.width.max(1);
+                        new_dimensions.height = new_dimensions.height.max(1);
 
                         let (new_swapchain, new_images) =
                             match self.swapchain.recreate(SwapchainCreateInfo {
@@ -834,11 +870,11 @@ impl Vera {
                     }
 
                     // wait for the fence related to this image to finish (normally this would be the oldest fence)
-                    if let Some(image_fence) = &fences[image_i as usize] {
+                    if let Some(image_fence) = &self.fences[image_i as usize] {
                         image_fence.wait(None).unwrap();
                     }
 
-                    let previous_future = match fences[self.previous_fence_i as usize].clone() {
+                    let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
                         // Create a NowFuture
                         None => {
                             let mut now = sync::now(self.device.clone());
@@ -872,7 +908,7 @@ impl Vera {
                         )
                         .then_signal_fence_and_flush();
 
-                    fences[image_i as usize] = match future {
+                    self.fences[image_i as usize] = match future {
                         Ok(value) => Some(Arc::new(value)),
                         Err(FlushError::OutOfDate) => {
                             self.recreate_swapchain = true;
@@ -887,6 +923,10 @@ impl Vera {
                     self.previous_fence_i = image_i;
                 }
                 _ => (),
-            });
+            })
     }
+
+    // pub fn save(&mut self)
+
+    // pub fn save(&mut self)
 }

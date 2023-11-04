@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["lib"]
+
+[package]
+name = "triangle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+lib = { path = "./lib" }
+hot-lib-reloader = "^0.6"
+vera = { path = "../.." }
