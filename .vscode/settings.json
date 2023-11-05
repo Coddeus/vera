@@ -2,5 +2,6 @@
   "rust-analyzer.linkedProjects": [
     ".\\examples\\triangle\\lib\\Cargo.toml",
     ".\\examples\\triangle\\Cargo.toml"
-  ]
+  ],
+  "workbench.colorTheme": "Community Material Theme Palenight"
 }

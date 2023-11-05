@@ -1,4 +1,5 @@
 // This file is where Vulkan is set up (`Vera::create()`) and actions are handled (`show()`, `save()`, etc.)
+// const hotlibdir: &str = std::env::current_dir().unwrap().join("target/debug").to_str().unwrap();
 
 pub mod elements;
 pub use elements::*;
@@ -610,7 +611,7 @@ impl Vera {
         // ------------------------------------------
 
         let frames_in_flight: usize = images.len();
-        let mut fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
+        let fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
         let previous_fence_i: u32 = 0;
         let window_resized: bool = false;
         let recreate_swapchain: bool = false;
@@ -726,31 +727,58 @@ impl Vera {
     // }
 
     pub fn dev(&mut self) {
+        #[hot_lib_reloader::hot_module(
+            dylib = "lib",
+            file_watch_debounce = 100
+        )]
+        mod hot_lib {
+            // Reads public no_mangle functions from lib.rs and  generates hot-reloadable
+            // wrapper functions with the same signature inside this module.
+            // Note that this path relative to the project root (or absolute)
+            hot_functions_from_file!("examples/triangle/lib/src/lib.rs");
+        }
+
         'dev: loop {
-            match self.vk.run(&mut self.event_loop) {
-                0 => {
+            match self.vk.show(&mut self.event_loop, false) {
+                0 => { // Successfully finished
+                    // Use recompiled dylib
+                    // () => Repeat
+                }
+                1 => { // Window closed 
+                    println!("ℹ Window closed. Exiting.");
                     break 'dev;
                 }
-                1 => {
-                    
-                }
                 _ => {
-                    panic!("Unexpected return code when running the main loop");
+                    panic!("🛑 Unexpected return code when running the main loop");
                 }
+            }
+        }
+    }
+
+    pub fn save(&mut self, width: u32, height: u32) {
+        match self.vk.show(&mut self.event_loop, true) {
+            0 => { // Successfully finished
+                println!("✨ Successfully saved video!");
+            }
+            1 => { // Window closed 
+                println!("⁉ Window closed. Stopping encoding now.");
+            }
+            _ => {
+                panic!("🛑 Unexpected return code when running the main loop");
             }
         }
     }
 }
 
 impl Vk {
-    fn run(&mut self, event_loop: &mut EventLoop<()> /*, &elements: Elements */) -> i32 {
+    fn show(&mut self, event_loop: &mut EventLoop<()>, save: bool /*, &elements: Elements */) -> i32 {
         event_loop
             .run_return(move |event, _, control_flow| match event {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => {
-                    *control_flow = ControlFlow::ExitWithCode(0);
+                    *control_flow = ControlFlow::ExitWithCode(1);
                 }
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
@@ -760,173 +788,184 @@ impl Vk {
                 }
                 Event::MainEventsCleared => {
                     // if elements.ended() {
-                    //     *control_flow = ControlFlow::ExitWithCode(1);
+                    //     *control_flow = ControlFlow::ExitWithCode(0);
                     // }
-                    if self.window_resized || self.recreate_swapchain {
-                        self.recreate_swapchain = false;
-
-                        let mut new_dimensions = self.window.inner_size();
-                        new_dimensions.width = new_dimensions.width.max(1);
-                        new_dimensions.height = new_dimensions.height.max(1);
-
-                        let (new_swapchain, new_images) =
-                            match self.swapchain.recreate(SwapchainCreateInfo {
-                                image_extent: new_dimensions.into(),
-                                ..self.swapchain.create_info()
-                            }) {
-                                Ok(r) => r,
-                                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
-                                    return
-                                }
-                                Err(e) => panic!("failed to recreate swapchain: {e}"),
-                            };
-                        self.swapchain = new_swapchain;
-                        let new_framebuffers = new_images
-                            .iter()
-                            .map(|image| {
-                                let view = ImageView::new_default(image.clone()).unwrap();
-                                Framebuffer::new(
-                                    self.render_pass.clone(),
-                                    FramebufferCreateInfo {
-                                        attachments: vec![view],
-                                        ..Default::default()
-                                    },
-                                )
-                                .unwrap()
-                            })
-                            .collect::<Vec<_>>();
-
-                        if self.window_resized {
-                            self.window_resized = false;
-
-                            self.drawing_viewport.dimensions = new_dimensions.into();
-
-                            let new_pipeline = GraphicsPipeline::start()
-                                .vertex_input_state(Veratex::per_vertex())
-                                .vertex_shader(self.drawing_vs.entry_point("main").unwrap(), ())
-                                .input_assembly_state(InputAssemblyState::new())
-                                .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-                                    self.drawing_viewport.clone(),
-                                ]))
-                                .fragment_shader(self.drawing_fs.entry_point("main").unwrap(), ())
-                                .render_pass(Subpass::from(self.render_pass.clone(), 0).unwrap())
-                                .build(self.device.clone())
-                                .unwrap();
-
-                            self.drawing_command_buffers = new_framebuffers
-                                .iter()
-                                .map(|framebuffer| {
-                                    let mut builder = AutoCommandBufferBuilder::primary(
-                                        &self.command_buffer_allocator,
-                                        self.queue.queue_family_index(),
-                                        CommandBufferUsage::MultipleSubmit,
-                                    )
-                                    .unwrap();
-
-                                    builder
-                                        .begin_render_pass(
-                                            RenderPassBeginInfo {
-                                                clear_values: vec![Some(
-                                                    [0.0, 0.0, 0.0, 0.0].into(),
-                                                )],
-                                                ..RenderPassBeginInfo::framebuffer(
-                                                    framebuffer.clone(),
-                                                )
-                                            },
-                                            SubpassContents::Inline,
-                                        )
-                                        .unwrap()
-                                        .bind_pipeline_graphics(new_pipeline.clone())
-                                        .bind_vertex_buffers(0, self.vertex_buffer.clone())
-                                        .bind_descriptor_sets(
-                                            PipelineBindPoint::Graphics,
-                                            new_pipeline.layout().clone(),
-                                            self.descriptor_set_layout_index as u32,
-                                            self.descriptor_set.clone(),
-                                        )
-                                        .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                                        .unwrap()
-                                        .end_render_pass()
-                                        .unwrap();
-
-                                    Arc::new(builder.build().unwrap())
-                                })
-                                .collect()
-                        }
-                    }
-
-                    let (image_i, suboptimal, acquire_future) =
-                        match swapchain::acquire_next_image(self.swapchain.clone(), None) {
-                            Ok(r) => r,
-                            Err(AcquireError::OutOfDate) => {
-                                self.recreate_swapchain = true;
-                                return;
-                            }
-                            Err(e) => panic!("failed to acquire next image: {e}"),
-                        };
-
-                    if suboptimal {
-                        self.recreate_swapchain = true;
-                    }
-
-                    // wait for the fence related to this image to finish (normally this would be the oldest fence)
-                    if let Some(image_fence) = &self.fences[image_i as usize] {
-                        image_fence.wait(None).unwrap();
-                    }
-
-                    let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
-                        // Create a NowFuture
-                        None => {
-                            let mut now = sync::now(self.device.clone());
-                            now.cleanup_finished();
-
-                            now.boxed()
-                        }
-                        // Use the existing FenceSignalFuture
-                        Some(fence) => fence.boxed(),
-                    };
-
-                    // self.uniform_copy_command_buffer.clone().execute(
-                    //     self.queue.clone(),
-                    // )
-                    // .unwrap()
-                    // .then_signal_fence_and_flush().unwrap();
-
-                    let future = previous_future
-                        .join(acquire_future)
-                        .then_execute(
-                            self.queue.clone(),
-                            self.drawing_command_buffers[image_i as usize].clone(),
-                        )
-                        .unwrap()
-                        .then_swapchain_present(
-                            self.queue.clone(),
-                            SwapchainPresentInfo::swapchain_image_index(
-                                self.swapchain.clone(),
-                                image_i,
-                            ),
-                        )
-                        .then_signal_fence_and_flush();
-
-                    self.fences[image_i as usize] = match future {
-                        Ok(value) => Some(Arc::new(value)),
-                        Err(FlushError::OutOfDate) => {
-                            self.recreate_swapchain = true;
-                            None
-                        }
-                        Err(e) => {
-                            println!("failed to flush future: {e}");
-                            None
-                        }
-                    };
-
-                    self.previous_fence_i = image_i;
+                    // self.update();
+                    self.draw();
+                    // if save { self.encode(); }
                 }
                 _ => (),
             })
     }
 
-    // pub fn save(&mut self)
+    pub fn update(&mut self) {
+        unimplemented!("Cannot Update yet!");
+    }
 
-    // pub fn save(&mut self)
+    fn draw(&mut self) {
+        // Compare to vulkano example for window bug
+        if self.window_resized || self.recreate_swapchain {
+            self.recreate_swapchain = false;
+
+            let mut new_dimensions = self.window.inner_size();
+            new_dimensions.width = new_dimensions.width.max(1);
+            new_dimensions.height = new_dimensions.height.max(1);
+
+            let (new_swapchain, new_images) =
+                match self.swapchain.recreate(SwapchainCreateInfo {
+                    image_extent: new_dimensions.into(),
+                    ..self.swapchain.create_info()
+                }) {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                        return
+                    }
+                    Err(e) => panic!("failed to recreate swapchain: {e}"),
+                };
+            self.swapchain = new_swapchain;
+            let new_framebuffers = new_images
+                .iter()
+                .map(|image| {
+                    let view = ImageView::new_default(image.clone()).unwrap();
+                    Framebuffer::new(
+                        self.render_pass.clone(),
+                        FramebufferCreateInfo {
+                            attachments: vec![view],
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+
+            if self.window_resized {
+                self.window_resized = false;
+
+                self.drawing_viewport.dimensions = new_dimensions.into();
+
+                let new_pipeline = GraphicsPipeline::start()
+                    .vertex_input_state(Veratex::per_vertex())
+                    .vertex_shader(self.drawing_vs.entry_point("main").unwrap(), ())
+                    .input_assembly_state(InputAssemblyState::new())
+                    .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
+                        self.drawing_viewport.clone(),
+                    ]))
+                    .fragment_shader(self.drawing_fs.entry_point("main").unwrap(), ())
+                    .render_pass(Subpass::from(self.render_pass.clone(), 0).unwrap())
+                    .build(self.device.clone())
+                    .unwrap();
+
+                self.drawing_command_buffers = new_framebuffers
+                    .iter()
+                    .map(|framebuffer| {
+                        let mut builder = AutoCommandBufferBuilder::primary(
+                            &self.command_buffer_allocator,
+                            self.queue.queue_family_index(),
+                            CommandBufferUsage::MultipleSubmit,
+                        )
+                        .unwrap();
+
+                        builder
+                            .begin_render_pass(
+                                RenderPassBeginInfo {
+                                    clear_values: vec![Some(
+                                        [0.0, 0.0, 0.0, 0.0].into(),
+                                    )],
+                                    ..RenderPassBeginInfo::framebuffer(
+                                        framebuffer.clone(),
+                                    )
+                                },
+                                SubpassContents::Inline,
+                            )
+                            .unwrap()
+                            .bind_pipeline_graphics(new_pipeline.clone())
+                            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+                            .bind_descriptor_sets(
+                                PipelineBindPoint::Graphics,
+                                new_pipeline.layout().clone(),
+                                self.descriptor_set_layout_index as u32,
+                                self.descriptor_set.clone(),
+                            )
+                            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+                            .unwrap()
+                            .end_render_pass()
+                            .unwrap();
+
+                        Arc::new(builder.build().unwrap())
+                    })
+                    .collect()
+            }
+        }
+
+        let (image_i, suboptimal, acquire_future) =
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    self.recreate_swapchain = true;
+                    return;
+                }
+                Err(e) => panic!("failed to acquire next image: {e}"),
+            };
+
+        if suboptimal {
+            self.recreate_swapchain = true;
+        }
+
+        // wait for the fence related to this image to finish (normally this would be the oldest fence)
+        if let Some(image_fence) = &self.fences[image_i as usize] {
+            image_fence.wait(None).unwrap();
+        }
+
+        let previous_future = match self.fences[self.previous_fence_i as usize].clone() {
+            // Create a NowFuture
+            None => {
+                let mut now = sync::now(self.device.clone());
+                now.cleanup_finished();
+
+                now.boxed()
+            }
+            // Use the existing FenceSignalFuture
+            Some(fence) => fence.boxed(),
+        };
+
+        // self.uniform_copy_command_buffer.clone().execute(
+        //     self.queue.clone(),
+        // )
+        // .unwrap()
+        // .then_signal_fence_and_flush().unwrap();
+
+        let future = previous_future
+            .join(acquire_future)
+            .then_execute(
+                self.queue.clone(),
+                self.drawing_command_buffers[image_i as usize].clone(),
+            )
+            .unwrap()
+            .then_swapchain_present(
+                self.queue.clone(),
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    image_i,
+                ),
+            )
+            .then_signal_fence_and_flush();
+
+        self.fences[image_i as usize] = match future {
+            Ok(value) => Some(Arc::new(value)),
+            Err(FlushError::OutOfDate) => {
+                self.recreate_swapchain = true;
+                None
+            }
+            Err(e) => {
+                println!("failed to flush future: {e}");
+                None
+            }
+        };
+
+        self.previous_fence_i = image_i;
+    }
+
+    pub fn encode(&mut self) {
+        unimplemented!("Cannot encode yet!");
+    }
 }
