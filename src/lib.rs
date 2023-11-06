@@ -188,7 +188,8 @@ mod fs {
 
 impl Vera {
     /// Sets up Vera with Vulkan
-    pub fn create() -> Self {
+    /// - `max-vertices` is the maximum number of vertices that will be shown. Increasing this number will enable more vertices, but will allocate more memory.
+    pub fn create(max_vertices: u64) -> Self {
         // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
@@ -352,7 +353,6 @@ impl Vera {
             Veratex::new(0.0, 1.0),
         ]
         .into_iter();
-        let vertex_data_len = 1000000;
 
         let temporary_vertex_buffer = Buffer::from_iter(
             &memory_allocator,
@@ -382,7 +382,7 @@ impl Vera {
                 usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
-            vertex_data_len,
+            max_vertices,
         )
         .expect("failed to create vertex_buffer");
 
@@ -680,14 +680,16 @@ impl Vera {
 
     /// Set `elements` as vertex data to device-local memory
     pub fn set(&mut self, elements: Vec<Shape>) {
-        let vertex_data: Vec<Veratex> = elements
+        let vertex_data = elements
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
                 .map(move |mut vertex| {vertex.entity_id = shape.0; vertex})
             )
-            .collect();
+            .collect::<Vec<Veratex>>()
+            .into_iter();
 
+        println!("♻ Restarting with data:");
         println!("Data: {:?}", vertex_data);
 
         let temporary_vertex_buffer = Buffer::from_iter(
@@ -953,6 +955,7 @@ impl Vera {
 }
 
 impl Vk {
+    /// Runs the animation in the window in real-time.
     pub fn show(&mut self, event_loop: &mut EventLoop<()>, save: (u32, u32) /*, &elements: Elements */) -> i32 {
         let start = Instant::now();
         event_loop
@@ -974,7 +977,6 @@ impl Vk {
                     //     *control_flow = ControlFlow::ExitWithCode(0);
                     // }
                     if start.elapsed().as_secs_f32() > 1.0 {
-                        println!("Restarting");
                         *control_flow = ControlFlow::ExitWithCode(0);
                     }
                     // self.update();
@@ -985,10 +987,12 @@ impl Vk {
             })
     }
 
+    /// Updates buffers (between two frames)
     fn update(&mut self) {
         unimplemented!("Cannot Update yet!");
     }
 
+    /// Draws a frame
     fn draw(&mut self) {
         if self.window_resized || self.recreate_swapchain {
             self.recreate_swapchain = false;
@@ -1151,6 +1155,7 @@ impl Vk {
         self.previous_fence_i = image_i;
     }
 
+    /// Encodes a frame to the output video, for saving.
     fn encode(&mut self) {
         unimplemented!("Cannot encode yet!");
     }

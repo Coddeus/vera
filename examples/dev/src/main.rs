@@ -9,16 +9,16 @@ mod hot_lib {
 }
 
 fn main() {
-    let mut v = Vera::create();
+    let mut v = Vera::create(10000);
 
     'dev: loop {
         match v.vk.show(&mut v.event_loop, (0, 0)) {
             0 => { // Successfully finished
+                // Reset input data
                 v.set(hot_lib::get());
-                // () => Repeat
             }
             1 => { // Window closed 
-                println!("ℹ Window closed. Exiting.");
+                println!("\nℹ Window closed. Exiting.");
                 break 'dev;
             }
             _ => {
