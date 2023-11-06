@@ -339,7 +339,7 @@ impl Vera {
 
         // Max buffer sizes
         // ----------------
-        // // If the elements fit, use UBO, otherwise use SSBO
+        // // If the entities fit, use UBO, otherwise use SSBO
         let max_uniform_buffer_size: u32 = physical_device.properties().max_uniform_buffer_range;
         let max_storage_buffer_size: u32 = physical_device.properties().max_storage_buffer_range;
 
@@ -353,7 +353,7 @@ impl Vera {
             Veratex::new(0.0, 1.0, 0),
         ]
         .into_iter();
-        let vertex_data_len = vertex_data.len() as u64;
+        let vertex_data_len = 1000000;
 
         let temporary_vertex_buffer = Buffer::from_iter(
             &memory_allocator,

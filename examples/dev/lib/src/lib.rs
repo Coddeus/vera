@@ -6,5 +6,8 @@ pub fn get() -> Vec<Veratex> {
         Veratex::new(0.0, 0.0, 0),
         Veratex::new(-1.0, 0.0, 0),
         Veratex::new(0.0, -1.0, 0),
+        Veratex::new(0.0, 0.0, 0),
+        Veratex::new(1.0, 0.0, 0),
+        Veratex::new(0.0, 1.0, 0),
     ]
 }
