@@ -347,9 +347,9 @@ impl Vera {
         // Copy of vertex data to device-local memory
         // ---------------------------------------------------
         let vertex_data = vec![
-            Veratex::new(0.0, 0.0, 0),
-            Veratex::new(1.0, 0.0, 0),
-            Veratex::new(0.0, 1.0, 0),
+            Veratex::new(0.0, 0.0),
+            Veratex::new(1.0, 0.0),
+            Veratex::new(0.0, 1.0),
         ]
         .into_iter();
         let vertex_data_len = 1000000;
@@ -679,11 +679,13 @@ impl Vera {
     }
 
     /// Set `elements` as vertex data to device-local memory
-    pub fn data(&mut self, elements: Vec<Shape>) {
+    pub fn set(&mut self, elements: Vec<Shape>) {
         let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
-            .flat_map(|shape| shape.1.vertices.into_iter().map(move |mut vertex| {vertex.entity_id = shape.0; vertex}))
+            .flat_map(|shape| shape.1.vertices.into_iter()
+                .map(move |mut vertex| {vertex.entity_id = shape.0; vertex})
+            )
             .collect();
 
         println!("Data: {:?}", vertex_data);
@@ -977,7 +979,7 @@ impl Vk {
                     }
                     // self.update();
                     self.draw();
-                    // if save.0 > 0 { self.encode(); }
+                    // if save.0 > 0 && save.0 > 0 { self.encode(); }
                 }
                 _ => (),
             })

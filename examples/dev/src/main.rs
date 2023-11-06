@@ -14,7 +14,7 @@ fn main() {
     'dev: loop {
         match v.vk.show(&mut v.event_loop, (0, 0)) {
             0 => { // Successfully finished
-                v.data(hot_lib::get());
+                v.set(hot_lib::get());
                 // () => Repeat
             }
             1 => { // Window closed 
