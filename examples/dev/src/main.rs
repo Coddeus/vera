@@ -4,7 +4,7 @@ use vera::*;
     dylib = "lib"
 )]
 mod hot_lib {
-    use vera::shape::Veratex;
+    use vera::shape::*;
     hot_functions_from_file!("lib/src/lib.rs");
 }
 
@@ -12,7 +12,7 @@ fn main() {
     let mut v = Vera::create();
 
     'dev: loop {
-        match v.vk.show(&mut v.event_loop, false) {
+        match v.vk.show(&mut v.event_loop, (0, 0)) {
             0 => { // Successfully finished
                 v.data(hot_lib::get());
                 // () => Repeat

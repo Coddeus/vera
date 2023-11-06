@@ -1,13 +1,9 @@
-use vera::shape::Veratex;
+use vera::shape::*;
 
 #[no_mangle]
-pub fn get() -> Vec<Veratex> {
+pub fn get() -> Vec<Shape> {
     vec![
-        Veratex::new(0.0, 0.0, 0),
-        Veratex::new(-1.0, 0.0, 0),
-        Veratex::new(0.0, -1.0, 0),
-        Veratex::new(0.0, 0.0, 0),
-        Veratex::new(1.0, 0.0, 0),
-        Veratex::new(0.0, 1.0, 0),
+        Triangle::new(0.5, 0.5, -0.5, -0.5, 1.0, 0.0),
+        Triangle::new(0.0, 0.5, 0.5, -0.5, 1.0, 0.0),
     ]
 }

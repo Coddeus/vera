@@ -11,7 +11,6 @@ pub use shape::*;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -680,11 +679,14 @@ impl Vera {
     }
 
     /// Set `elements` as vertex data to device-local memory
-    pub fn data(&mut self, elements: Vec<Veratex>) {
-        println!("Updating with elements: {:?}", elements);
-        
-        let vertex_data = elements.into_iter();
-        let vertex_data_len = vertex_data.len() as u64;
+    pub fn data(&mut self, elements: Vec<Shape>) {
+        let vertex_data: Vec<Veratex> = elements
+            .into_iter()
+            .enumerate()
+            .flat_map(|shape| shape.1.vertices.into_iter().map(move |mut vertex| {vertex.entity_id = shape.0; vertex}))
+            .collect();
+
+        println!("Data: {:?}", vertex_data);
 
         let temporary_vertex_buffer = Buffer::from_iter(
             &self.vk.memory_allocator,
@@ -934,7 +936,7 @@ impl Vera {
     }
 
     pub fn save(&mut self, width: u32, height: u32) {
-        match self.vk.show(&mut self.event_loop, true) {
+        match self.vk.show(&mut self.event_loop, (width, height)) {
             0 => { // Successfully finished
                 println!("✨ Successfully saved video!");
             }
@@ -949,7 +951,7 @@ impl Vera {
 }
 
 impl Vk {
-    pub fn show(&mut self, event_loop: &mut EventLoop<()>, save: bool /*, &elements: Elements */) -> i32 {
+    pub fn show(&mut self, event_loop: &mut EventLoop<()>, save: (u32, u32) /*, &elements: Elements */) -> i32 {
         let start = Instant::now();
         event_loop
             .run_return(move |event, _, control_flow| match event {
@@ -975,7 +977,7 @@ impl Vk {
                     }
                     // self.update();
                     self.draw();
-                    // if save { self.encode(); }
+                    // if save.0 > 0 { self.encode(); }
                 }
                 _ => (),
             })
