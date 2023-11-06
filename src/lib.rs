@@ -1,15 +1,19 @@
 // This file is where Vulkan is set up (`Vera::create()`) and actions are handled (`show()`, `save()`, etc.)
 // const hotlibdir: &str = std::env::current_dir().unwrap().join("target/debug").to_str().unwrap();
 
-pub mod elements;
-pub use elements::*;
+// pub mod elements;
+// pub use elements::*;
 pub mod transform;
 pub use transform::*;
+pub mod shape;
+pub use shape::*;
+
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
@@ -49,11 +53,11 @@ use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
 
 pub struct Vera {
-    event_loop: EventLoop<()>,
-    vk: Vk,
+    pub event_loop: EventLoop<()>,
+    pub vk: Vk,
 }
 
-struct Vk {
+pub struct Vk {
     // -----
     library: Arc<vulkano::VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
@@ -75,6 +79,7 @@ struct Vk {
     // -----
     memory_allocator: GenericMemoryAllocator<Arc<vulkano::memory::allocator::FreeListAllocator>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
+    descriptor_set_allocator: StandardDescriptorSetAllocator,
 
     // -----
     max_uniform_buffer_size: u32,
@@ -338,11 +343,9 @@ impl Vera {
         let max_uniform_buffer_size: u32 = physical_device.properties().max_uniform_buffer_range;
         let max_storage_buffer_size: u32 = physical_device.properties().max_storage_buffer_range;
 
-        println!("max_uniform_buffer_size: {}\nmax_storage_buffer_size: {}", max_uniform_buffer_size, max_storage_buffer_size);
-
         // ----------------
 
-        // One-time copy of vertex data to device-local memory
+        // Copy of vertex data to device-local memory
         // ---------------------------------------------------
         let vertex_data = vec![
             Veratex::new(0.0, 0.0, 0),
@@ -640,7 +643,7 @@ impl Vera {
                 // -----
                 memory_allocator,
                 command_buffer_allocator,
-                // descriptor_set_allocator,
+                descriptor_set_allocator,
 
                 // -----
                 max_uniform_buffer_size,
@@ -674,6 +677,181 @@ impl Vera {
                 fences,
             }
         }
+    }
+
+    /// Set `elements` as vertex data to device-local memory
+    pub fn data(&mut self, elements: Vec<Veratex>) {
+        println!("Updating with elements: {:?}", elements);
+        
+        let vertex_data = elements.into_iter();
+        let vertex_data_len = vertex_data.len() as u64;
+
+        let temporary_vertex_buffer = Buffer::from_iter(
+            &self.vk.memory_allocator,
+            BufferCreateInfo {
+                // Specify this buffer will be used as a transfer source.
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                // Specify this buffer will be used for uploading to the GPU.
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            vertex_data,
+        )
+        .expect("failed to create temporary_vertex_buffer");
+
+        // self.vk.vertex_buffer = Buffer::new_slice::<Veratex>(
+        //     &self.vk.memory_allocator,
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER
+        //             | BufferUsage::TRANSFER_DST
+        //             | BufferUsage::VERTEX_BUFFER,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         usage: MemoryUsage::DeviceOnly,
+        //         ..Default::default()
+        //     },
+        //     vertex_data_len,
+        // )
+        // .expect("failed to create vertex_buffer");
+
+        let mut vertex_cbb = AutoCommandBufferBuilder::primary(
+            &self.vk.command_buffer_allocator,
+            self.vk.queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .expect("failed to create vertex_cbb");
+
+        vertex_cbb
+            .copy_buffer(CopyBufferInfo::buffers(
+                temporary_vertex_buffer,
+                self.vk.vertex_buffer.clone(),
+            ))
+            .unwrap();
+
+        let vertex_cb = vertex_cbb.build().unwrap();
+        vertex_cb
+            .execute(self.vk.queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None /* timeout */)
+            .unwrap();
+        
+        // let uniform_data = vec![UniformData::empty()];
+        // let uniform_data_len = uniform_data.len() as u64;
+    
+        // let staging_uniform_buffer = Buffer::from_iter(
+        //     &self.vk.memory_allocator,
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_SRC,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         usage: MemoryUsage::Upload,
+        //         ..Default::default()
+        //     },
+        //     uniform_data,
+        // )
+        // .expect("failed to create staging_uniform_buffer");
+    // 
+        // let uniform_buffer = Buffer::new_slice(
+        //     &self.vk.memory_allocator,
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         usage: MemoryUsage::DeviceOnly,
+        //         ..Default::default()
+        //     },
+        //     uniform_data_len,
+        // )
+        // .expect("failed to create uniform_buffer");
+    // 
+    // 
+        // let mut uniform_copy_cbb = AutoCommandBufferBuilder::primary(
+        //     &self.vk.command_buffer_allocator,
+        //     self.vk.queue.queue_family_index(),
+        //     CommandBufferUsage::MultipleSubmit,
+        // )
+        // .expect("failed to create uniform_copy_cbb");
+    // 
+        // uniform_copy_cbb
+        //     .copy_buffer(CopyBufferInfo::buffers(
+        //         staging_uniform_buffer.clone(),
+        //         uniform_buffer.clone(),
+        //     ))
+        //     .unwrap();
+    // 
+        // let uniform_copy_command_buffer = Arc::new(uniform_copy_cbb.build().unwrap());
+        // 
+        // uniform_copy_command_buffer.clone()
+        //     .execute(self.vk.queue.clone())
+        //     .unwrap()
+        //     .then_signal_fence_and_flush()
+        //     .unwrap()
+        //     .wait(None /* timeout */)
+        //     .unwrap();
+// 
+        // let pipeline_layout = self.vk.drawing_pipeline.layout();
+        // let descriptor_set_layouts = pipeline_layout.set_layouts();
+        // let descriptor_set_layout_index = 0;
+        // let descriptor_set_layout = descriptor_set_layouts
+        //     .get(descriptor_set_layout_index)
+        //     .unwrap();
+        // let descriptor_set = PersistentDescriptorSet::new(
+        //     &self.vk.descriptor_set_allocator,
+        //     descriptor_set_layout.clone(),
+        //     [WriteDescriptorSet::buffer(
+        //         0,
+        //         self.vk.uniform_buffer.clone(),
+        //     )],
+        // )
+        // .unwrap();
+// 
+        // let drawing_command_buffers = self.vk.framebuffers
+        //     .iter()
+        //     .map(|framebuffer| {
+        //         let mut builder = AutoCommandBufferBuilder::primary(
+        //             &self.vk.command_buffer_allocator,
+        //             self.vk.queue.queue_family_index(),
+        //             CommandBufferUsage::MultipleSubmit,
+        //         )
+        //         .unwrap();
+// 
+        //         builder
+        //             .begin_render_pass(
+        //                 RenderPassBeginInfo {
+        //                     clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
+        //                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+        //                 },
+        //                 SubpassContents::Inline,
+        //             )
+        //             .unwrap()
+        //             .bind_pipeline_graphics(self.vk.drawing_pipeline.clone())
+        //             .bind_descriptor_sets(
+        //                 PipelineBindPoint::Graphics,
+        //                 pipeline_layout.clone(),
+        //                 self.vk.descriptor_set_layout_index as u32,
+        //                 self.vk.descriptor_set.clone(),
+        //             )
+        //             .bind_vertex_buffers(0, self.vk.vertex_buffer.clone())
+        //             .draw(self.vk.vertex_buffer.len() as u32, 1, 0, 0)
+        //             .unwrap()
+        //             .end_render_pass()
+        //             .unwrap();
+// 
+        //         Arc::new(builder.build().unwrap())
+        //     })
+        //     .collect();
+// 
+        // self.vk.vertex_buffer = vertex_buffer;
+        // self.vk.uniform_buffer = uniform_buffer;
+        // self.vk.drawing_command_buffers = drawing_command_buffers;
     }
 
     // fn uniform_copy_command_buffer(&self) -> Arc<PrimaryAutoCommandBuffer> {
@@ -727,32 +905,32 @@ impl Vera {
     // }
 
     pub fn dev(&mut self) {
-        #[hot_lib_reloader::hot_module(
-            dylib = "lib",
-            file_watch_debounce = 100
-        )]
-        mod hot_lib {
-            // Reads public no_mangle functions from lib.rs and  generates hot-reloadable
-            // wrapper functions with the same signature inside this module.
-            // Note that this path relative to the project root (or absolute)
-            hot_functions_from_file!("examples/triangle/lib/src/lib.rs");
-        }
-
-        'dev: loop {
-            match self.vk.show(&mut self.event_loop, false) {
-                0 => { // Successfully finished
-                    // Use recompiled dylib
-                    // () => Repeat
-                }
-                1 => { // Window closed 
-                    println!("ℹ Window closed. Exiting.");
-                    break 'dev;
-                }
-                _ => {
-                    panic!("🛑 Unexpected return code when running the main loop");
-                }
-            }
-        }
+        // #[hot_lib_reloader::hot_module(
+        //     dylib = "lib",
+        //     file_watch_debounce = 100
+        // )]
+        // mod hot_lib {
+        //     // Reads public no_mangle functions from lib.rs and  generates hot-reloadable
+        //     // wrapper functions with the same signature inside this module.
+        //     // Note that this path relative to the project root (or absolute)
+        //     hot_functions_from_file!("examples/dev/lib/src/lib.rs");
+        // }
+        // 
+        // 'dev: loop {
+        //     match self.vk.show(&mut self.event_loop, false) {
+        //         0 => { // Successfully finished
+        //             // Use recompiled dylib
+        //             // () => Repeat
+        //         }
+        //         1 => { // Window closed 
+        //             println!("ℹ Window closed. Exiting.");
+        //             break 'dev;
+        //         }
+        //         _ => {
+        //             panic!("🛑 Unexpected return code when running the main loop");
+        //         }
+        //     }
+        // }
     }
 
     pub fn save(&mut self, width: u32, height: u32) {
@@ -771,7 +949,8 @@ impl Vera {
 }
 
 impl Vk {
-    fn show(&mut self, event_loop: &mut EventLoop<()>, save: bool /*, &elements: Elements */) -> i32 {
+    pub fn show(&mut self, event_loop: &mut EventLoop<()>, save: bool /*, &elements: Elements */) -> i32 {
+        let start = Instant::now();
         event_loop
             .run_return(move |event, _, control_flow| match event {
                 Event::WindowEvent {
@@ -790,6 +969,10 @@ impl Vk {
                     // if elements.ended() {
                     //     *control_flow = ControlFlow::ExitWithCode(0);
                     // }
+                    if start.elapsed().as_secs_f32() > 1.0 {
+                        println!("Restarting");
+                        *control_flow = ControlFlow::ExitWithCode(0);
+                    }
                     // self.update();
                     self.draw();
                     // if save { self.encode(); }
@@ -798,12 +981,11 @@ impl Vk {
             })
     }
 
-    pub fn update(&mut self) {
+    fn update(&mut self) {
         unimplemented!("Cannot Update yet!");
     }
 
     fn draw(&mut self) {
-        // Compare to vulkano example for window bug
         if self.window_resized || self.recreate_swapchain {
             self.recreate_swapchain = false;
 
@@ -965,7 +1147,7 @@ impl Vk {
         self.previous_fence_i = image_i;
     }
 
-    pub fn encode(&mut self) {
+    fn encode(&mut self) {
         unimplemented!("Cannot encode yet!");
     }
 }

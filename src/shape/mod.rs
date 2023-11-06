@@ -1,7 +1,7 @@
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
 /// Vertex for Vera
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
 pub struct Veratex {
     #[format(R32G32_SFLOAT)]
@@ -15,10 +15,6 @@ impl Veratex {
         Veratex { position: [x, y], entity_id }
     }
 }
-
-
-pub trait Shape {
-    fn new() -> Self;
-    fn vertices(self) -> [Veratex ; Shape::vertex_count(&self)];
-    fn vertex_count(&self) -> usize;
+pub struct Shape {
+    vertices: Box<[Veratex]>,
 }

@@ -8,7 +8,7 @@ impl Triangle {
     }
 }
 
-impl crate::Vertices for Triangle {
+impl crate::Shape for Triangle {
     fn vertices(self) -> [Veratex ; 3] {
         self.0
     }
