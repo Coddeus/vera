@@ -3,7 +3,7 @@ resolver = "2"
 members = ["lib"]
 
 [package]
-name = "triangle"
+name = "vera_dev"
 version = "0.1.0"
 edition = "2021"
 
