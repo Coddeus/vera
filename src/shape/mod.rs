@@ -9,7 +9,7 @@ pub struct Veratex {
     pub(crate) position: [f32; 2],
     /// The id of the entity. Used and overriden when calling `vera::Vera::set()`
     #[format(R32_UINT)]
-    pub(crate) entity_id: usize,
+    pub(crate) entity_id: u32,
 }
 impl Veratex {
     /// A new `Veratex` with (x, y) 2D coordinates.

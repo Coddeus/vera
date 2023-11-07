@@ -9,7 +9,7 @@ mod hot_lib {
 }
 
 fn main() {
-    let mut v = Vera::create(1000000, hot_lib::get());
+    let mut v = Vera::create(1_000_000, 10_000, hot_lib::get());
 
     'dev: loop {
         match v.vk.show(&mut v.event_loop, (0, 0)) {

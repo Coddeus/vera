@@ -139,6 +139,7 @@ mod vs {
             } buf;
 
             layout(location = 0) in vec2 position;
+            layout(location = 1) in uint entity_id;
 
             void main() {
                 // float angle = 3.14;
@@ -147,7 +148,7 @@ mod vs {
                 //     sin(angle), 2.0*cos(angle), -0.0,
                 //     0.0, 0.0, 1.0
                 // );
-                gl_Position = vec4(vec3(position, 1.0) * buf.data[0].model_matrix, 1.0);
+                gl_Position = vec4(vec3(position, 1.0) * buf.data[entity_id].model_matrix, 1.0);
             }
         ",
     }
@@ -197,7 +198,7 @@ impl Vera {
     /// Sets up Vera with Vulkan
     /// - `max-vertices` is the maximum number of vertices that will be shown. Increasing this number will enable more vertices, but will allocate more memory (And 2 buffers are allocated for vertices).
     /// - `elements` 
-    pub fn create(max_vertices: u64, elements: Vec<Shape>) -> Self {
+    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape>) -> Self {
         // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
@@ -356,14 +357,16 @@ impl Vera {
         // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
         // ------------------------------------------------------------------------------
         
-        let vertex_data = elements
+        let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
             )
-            .collect::<Vec<Veratex>>()
-            .into_iter();
+            .collect::<Vec<Veratex>>();
+
+        // Uniform data for next section
+        let uniform_data: Vec<UniformData> = vec![UniformData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
 
         let staging_vertex_buffer: Subbuffer<[Veratex]> = Buffer::new_slice::<Veratex>(
             &memory_allocator,
@@ -379,7 +382,7 @@ impl Vera {
             },
             max_vertices,
         )
-        .expect("failed to create temporary_vertex_buffer");
+        .expect("failed to create staging_vertex_buffer");
 
         for (o, i) in staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
             unsafe { std::ptr::write(o, i) };
@@ -432,10 +435,8 @@ impl Vera {
 
         // Staging & Device-local uniform buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
         // -------------------------------------------------------------------------------
-        let uniform_data = vec![UniformData::empty()];
-        let uniform_data_len = uniform_data.len() as u64;
 
-        let staging_uniform_buffer = Buffer::from_iter(
+        let staging_uniform_buffer = Buffer::new_slice::<UniformData>(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_SRC,
@@ -445,9 +446,13 @@ impl Vera {
                 usage: MemoryUsage::Upload,
                 ..Default::default()
             },
-            uniform_data,
+            max_entities,
         )
         .expect("failed to create staging_uniform_buffer");
+
+        for (o, i) in staging_uniform_buffer.write().unwrap().iter_mut().zip(uniform_data) {
+            unsafe { std::ptr::write(o, i) };
+        }
 
         let uniform_buffer = Buffer::new_slice(
             &memory_allocator,
@@ -459,7 +464,7 @@ impl Vera {
                 usage: MemoryUsage::DeviceOnly,
                 ..Default::default()
             },
-            uniform_data_len,
+            max_entities,
         )
         .expect("failed to create uniform_buffer");
 
@@ -715,16 +720,26 @@ impl Vera {
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
             )
-            .collect::<Vec<Veratex>>()
-            .into_iter();
+            .collect::<Vec<Veratex>>();
+        let uniform_data = vec![UniformData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
 
         for (o, i) in self.vk.staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
             unsafe { std::ptr::write(o, i) };
         }
+        for (o, i) in self.vk.staging_uniform_buffer.write().unwrap().iter_mut().zip(uniform_data) {
+            unsafe { std::ptr::write(o, i) };
+        }
         
         self.vk.vertex_copy_command_buffer.clone()
+            .execute(self.vk.queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None /* timeout */)
+            .unwrap();
+        self.vk.uniform_copy_command_buffer.clone()
             .execute(self.vk.queue.clone())
             .unwrap()
             .then_signal_fence_and_flush()
