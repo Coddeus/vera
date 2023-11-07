@@ -22,8 +22,8 @@ vulkano-win = "0.33.0"
 winit = "0.28.7"
 
 
-[profile.dev]
-opt-level = 1
+# [profile.dev]
+# opt-level = 1
 
 [profile.release]
 opt-level = 3
