@@ -64,7 +64,7 @@ impl Default for Shape {
     }
 }
 
-/// A shortcut for a triangle shape
+/// A triangle shape
 pub struct Triangle;
 
 impl Triangle {
@@ -73,6 +73,18 @@ impl Triangle {
             Veratex::new(x1, y1),
             Veratex::new(x2, y2),
             Veratex::new(x3, y3),
+        ])
+    }
+}
+
+/// A rectangle shape
+pub struct Rectangle;
+
+impl Rectangle {
+    pub fn new(width: f32, height: f32) -> Shape {
+        Shape::from_merge(vec![
+            Triangle::new(-width/2., -height/2., width/2., -height/2., -width/2., height/2.),
+            Triangle::new(width/2., height/2., width/2., -height/2., -width/2., height/2.),
         ])
     }
 }

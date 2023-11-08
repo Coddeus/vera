@@ -45,7 +45,7 @@ use vulkano::sync::{self, FlushError, GpuFuture};
 use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
@@ -91,12 +91,16 @@ pub struct Vk {
     vertex_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
 
     // -----
-    uniform_buffer: Subbuffer<[UniformData]>,
-    staging_uniform_buffer: Subbuffer<[UniformData]>,
-    uniform_copy_command_buffer: Arc<PrimaryAutoCommandBuffer>,
-    uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
-    descriptor_set: Arc<PersistentDescriptorSet>,
-    descriptor_set_layout_index: usize,
+    general_uniform_buffer: Subbuffer<GeneralData>,
+    general_staging_uniform_buffer: Subbuffer<GeneralData>,
+    general_uniform_copy_command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    general_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
+
+    // -----
+    entities_uniform_buffer: Subbuffer<[EntitiesData]>,
+    entities_staging_uniform_buffer: Subbuffer<[EntitiesData]>,
+    entities_uniform_copy_command_buffer: Arc<PrimaryAutoCommandBuffer>,
+    entities_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
 
     // -----
     // uniform_update_cs: Arc<ShaderModule>,
@@ -108,6 +112,8 @@ pub struct Vk {
     drawing_fs: Arc<ShaderModule>,
     drawing_viewport: Viewport,
     drawing_pipeline: Arc<GraphicsPipeline>,
+    descriptor_set: Arc<PersistentDescriptorSet>,
+    descriptor_set_layout_index: usize,
     drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
     frames_in_flight: usize,
     drawing_fences: Vec<Option<Arc<FenceSignalFuture<PresentFuture<CommandBufferExecFuture<JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>>>>>>>,
@@ -117,6 +123,12 @@ pub struct Vk {
     window_resized: bool,
     recreate_swapchain: bool,
     show_count: u32,
+
+    // -----
+    // Test speed of allocation vs clone every time
+    general_uniform_data: GeneralData,
+    // entities_uniform_data,
+    // entities_number,
 }
 
 const PKG_NAME: &str = match option_env!("CARGO_PKG_NAME") {
@@ -130,25 +142,41 @@ mod vs {
         src: r"
             #version 460
 
-            struct uData {
+            struct uGeneralData {
+                mat3 view_matrix;
+                vec2 resolution;
+                float time;
+            };
+
+            struct uEntitiesData {
                 mat3 model_matrix;
             };
             
-            layout(set = 0, binding = 0) buffer UniformData {
-                uData data[];
-            } buf;
+            layout(set = 0, binding = 0) buffer GeneralData {
+                uGeneralData data;
+            } general_buf;
+            
+            layout(set = 0, binding = 1) buffer EntitiesData {
+                uEntitiesData data[];
+            } entities_buf;
 
             layout(location = 0) in vec2 position;
             layout(location = 1) in uint entity_id;
 
             void main() {
+                vec2 uv = position;
+                if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
+                    uv.x *= general_buf.data.resolution.y/general_buf.data.resolution.x;
+                } else {
+                    uv.y *= general_buf.data.resolution.x/general_buf.data.resolution.y;
+                }
                 // float angle = 3.14;
                 // mat3 matrix = mat3(
                 //     2.0*cos(angle), -sin(angle), 0.5,
                 //     sin(angle), 2.0*cos(angle), -0.0,
                 //     0.0, 0.0, 1.0
                 // );
-                gl_Position = vec4(vec3(position, 1.0) * buf.data[entity_id].model_matrix, 1.0);
+                gl_Position = vec4(vec3(uv, 1.0) * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix, 1.0);
             }
         ",
     }
@@ -182,7 +210,7 @@ mod fs {
 //                 mat3 model_matrix;
 //             };
 // 
-//             layout(set = 0, binding = 0) buffer UniformData {
+//             layout(set = 0, binding = 0) buffer EntitiesData {
 //                 uData data[];
 //             } buf;
 // 
@@ -348,7 +376,7 @@ impl Vera {
 
         // Max buffer sizes
         // ----------------
-        // // If the entities fit, use UBO, otherwise use SSBO
+        // // If the entities fit (inlcuding the other uniforms), use UBO, otherwise use SSBO
         let max_uniform_buffer_size: u32 = physical_device.properties().max_uniform_buffer_range;
         let max_storage_buffer_size: u32 = physical_device.properties().max_storage_buffer_range;
 
@@ -356,7 +384,6 @@ impl Vera {
 
         // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
         // ------------------------------------------------------------------------------
-        
         let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
@@ -365,8 +392,9 @@ impl Vera {
             )
             .collect::<Vec<Veratex>>();
 
-        // Uniform data for next section
-        let uniform_data: Vec<UniformData> = vec![UniformData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        // Uniform data for the *uniform* sections
+        let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size());
+        let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
 
         let staging_vertex_buffer: Subbuffer<[Veratex]> = Buffer::new_slice::<Veratex>(
             &memory_allocator,
@@ -433,13 +461,71 @@ impl Vera {
 
         // ------------------------------------------------------------------------------
 
-        // Staging & Device-local uniform buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
-        // -------------------------------------------------------------------------------
-
-        let staging_uniform_buffer = Buffer::new_slice::<UniformData>(
+        // Staging & Device-local uniform buffers for general data, and their copy command buffers
+        // ---------------------------------------------------------------------------------------
+        let general_staging_uniform_buffer = Buffer::new_sized::<GeneralData>(
             &memory_allocator,
             BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_SRC,
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+        )
+        .expect("failed to create staging_uniform_buffer");
+
+        unsafe { std::ptr::write(&mut *general_staging_uniform_buffer.write().unwrap(), general_uniform_data.clone()) };
+
+        let general_uniform_buffer = Buffer::new_sized::<GeneralData>(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::DeviceOnly,
+                ..Default::default()
+            },
+        )
+        .expect("failed to create uniform_buffer");
+
+        let mut general_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .expect("failed to create uniform_copy_cbb");
+
+        general_uniform_copy_cbb
+            .copy_buffer(CopyBufferInfo::buffers(
+                general_staging_uniform_buffer.clone(),
+                general_uniform_buffer.clone(),
+            ))
+            .unwrap();
+
+        let general_uniform_copy_command_buffer = Arc::new(general_uniform_copy_cbb.build().unwrap());
+        
+        general_uniform_copy_command_buffer.clone()
+            .execute(queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None /* timeout */)
+            .unwrap();
+
+        let general_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>> = None;
+
+        // ---------------------------------------------------------------------------------------
+
+        // Staging & Device-local uniform buffers for entities, and their copy & update command buffers  // TODOCOMPUTEUPDATE
+        // --------------------------------------------------------------------------------------------
+
+        let entities_staging_uniform_buffer = Buffer::new_slice::<EntitiesData>(
+            &memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
             AllocationCreateInfo {
@@ -450,11 +536,11 @@ impl Vera {
         )
         .expect("failed to create staging_uniform_buffer");
 
-        for (o, i) in staging_uniform_buffer.write().unwrap().iter_mut().zip(uniform_data) {
+        for (o, i) in entities_staging_uniform_buffer.write().unwrap().iter_mut().zip(entities_uniform_data) {
             unsafe { std::ptr::write(o, i) };
         }
 
-        let uniform_buffer = Buffer::new_slice(
+        let entities_uniform_buffer = Buffer::new_slice::<EntitiesData>(
             &memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
@@ -468,24 +554,23 @@ impl Vera {
         )
         .expect("failed to create uniform_buffer");
 
-        // Not kept
-        let mut uniform_copy_cbb = AutoCommandBufferBuilder::primary(
+        let mut entities_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
             &command_buffer_allocator,
             queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
         .expect("failed to create uniform_copy_cbb");
 
-        uniform_copy_cbb
+        entities_uniform_copy_cbb
             .copy_buffer(CopyBufferInfo::buffers(
-                staging_uniform_buffer.clone(),
-                uniform_buffer.clone(),
+                entities_staging_uniform_buffer.clone(),
+                entities_uniform_buffer.clone(),
             ))
             .unwrap();
 
-        let uniform_copy_command_buffer = Arc::new(uniform_copy_cbb.build().unwrap());
+        let entities_uniform_copy_command_buffer = Arc::new(entities_uniform_copy_cbb.build().unwrap());
         
-        uniform_copy_command_buffer.clone()
+        entities_uniform_copy_command_buffer.clone()
             .execute(queue.clone())
             .unwrap()
             .then_signal_fence_and_flush()
@@ -493,7 +578,7 @@ impl Vera {
             .wait(None /* timeout */)
             .unwrap();
 
-        let uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>> = None;
+        let entities_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>> = None;
 
 /*
         let uniform_update_cs =
@@ -551,7 +636,7 @@ impl Vera {
 
 */
 
-        // -------------------------------------------------------------------------------
+        // --------------------------------------------------------------------------------------------
 
         // Graphics pipeline & Drawing command buffer
         // ------------------------------------------
@@ -579,6 +664,7 @@ impl Vera {
         
         let pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = drawing_pipeline.layout();
         let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] = pipeline_layout.set_layouts();
+
         let descriptor_set_layout_index: usize = 0;
         let descriptor_set_layout: &Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> = descriptor_set_layouts
             .get(descriptor_set_layout_index)
@@ -586,10 +672,16 @@ impl Vera {
         let descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
             descriptor_set_layout.clone(),
-            [WriteDescriptorSet::buffer(
-                0,
-                uniform_buffer.clone(),
-            )],
+            [
+                WriteDescriptorSet::buffer(
+                    0,
+                    general_uniform_buffer.clone(),
+                ),
+                WriteDescriptorSet::buffer(
+                    1,
+                    entities_uniform_buffer.clone(),
+                ),
+            ],
         )
         .unwrap();
 
@@ -686,20 +778,30 @@ impl Vera {
                 vertex_copy_fence,
 
                 // -----
-                uniform_buffer,
-                staging_uniform_buffer,
-                uniform_copy_command_buffer,
-                uniform_copy_fence,
+                general_uniform_buffer,
+                general_staging_uniform_buffer,
+                general_uniform_copy_command_buffer,
+                general_uniform_copy_fence,
+
+                // -----
+                entities_uniform_buffer,
+                entities_staging_uniform_buffer,
+                entities_uniform_copy_command_buffer,
+                entities_uniform_copy_fence,
+
+                // -----
+
+                // -----
                 // uniform_update_cs,
                 // uniform_update_pipeline,
                 // uniform_update_command_buffer,
-                descriptor_set,
-                descriptor_set_layout_index,
 
                 // -----
                 drawing_vs,
                 drawing_fs,
                 drawing_viewport,
+                descriptor_set,
+                descriptor_set_layout_index,
                 drawing_pipeline,
                 drawing_command_buffers,
                 frames_in_flight,
@@ -710,25 +812,34 @@ impl Vera {
                 window_resized,
                 recreate_swapchain,
                 show_count,
+
+                // -----
+                // vertex_data,
+                general_uniform_data,
+                // entities_uniform_data,
+                // entities_number,
             }
         }
     }
 
-    /// Set `elements` as vertex data in device-local memory
+    /// Resets vertex and uniform data with `elements`
     pub fn reset(&mut self, elements: Vec<Shape>) {
-        let vertex_data = elements
+        // keep ___data in Vk { .. }
+        let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
                 .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
             )
             .collect::<Vec<Veratex>>();
-        let uniform_data = vec![UniformData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size());
+        let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
 
         for (o, i) in self.vk.staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
             unsafe { std::ptr::write(o, i) };
         }
-        for (o, i) in self.vk.staging_uniform_buffer.write().unwrap().iter_mut().zip(uniform_data) {
+            unsafe { std::ptr::write(&mut *self.vk.general_staging_uniform_buffer.write().unwrap(), self.vk.general_uniform_data.clone()) };
+        for (o, i) in self.vk.entities_staging_uniform_buffer.write().unwrap().iter_mut().zip(entities_uniform_data) {
             unsafe { std::ptr::write(o, i) };
         }
         
@@ -739,7 +850,14 @@ impl Vera {
             .unwrap()
             .wait(None /* timeout */)
             .unwrap();
-        self.vk.uniform_copy_command_buffer.clone()
+        self.vk.general_uniform_copy_command_buffer.clone()
+            .execute(self.vk.queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None /* timeout */)
+            .unwrap();
+        self.vk.entities_uniform_copy_command_buffer.clone()
             .execute(self.vk.queue.clone())
             .unwrap()
             .then_signal_fence_and_flush()
@@ -940,10 +1058,20 @@ impl Vk {
                     *control_flow = ControlFlow::ExitWithCode(1);
                 }
                 Event::WindowEvent {
-                    event: WindowEvent::Resized(_),
+                    event: WindowEvent::Resized( inner_size ),
                     ..
                 } => {
                     self.window_resized = true;
+
+                    self.general_uniform_data = GeneralData::from_resolution(self.window.inner_size());
+                    unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
+                    self.general_uniform_copy_command_buffer.clone()
+                        .execute(self.queue.clone())
+                        .unwrap()
+                        .then_signal_fence_and_flush()
+                        .unwrap()
+                        .wait(None /* timeout */)
+                        .unwrap();
                 }
                 Event::MainEventsCleared => {
                     // if elements.ended() {
