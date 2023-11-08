@@ -3,10 +3,10 @@
 
 // pub mod elements;
 // pub use elements::*;
-pub mod transform;
-pub use transform::*;
-pub mod shape;
-pub use shape::*;
+pub mod buffer_contents;
+pub use buffer_contents::*;
+use vera_shapes::Shape;
+
 
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -226,7 +226,7 @@ impl Vera {
     /// Sets up Vera with Vulkan
     /// - `max-vertices` is the maximum number of vertices that will be shown. Increasing this number will enable more vertices, but will allocate more memory (And 2 buffers are allocated for vertices).
     /// - `elements` 
-    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape>) -> Self {
+    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape<Veratex>>) -> Self {
         // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
@@ -823,7 +823,7 @@ impl Vera {
     }
 
     /// Resets vertex and uniform data with `elements`
-    pub fn reset(&mut self, elements: Vec<Shape>) {
+    pub fn reset(&mut self, elements: Vec<Shape<Veratex>>) {
         // keep ___data in Vk { .. }
         let vertex_data: Vec<Veratex> = elements
             .into_iter()

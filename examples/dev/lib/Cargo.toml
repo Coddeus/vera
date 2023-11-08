@@ -7,4 +7,4 @@ edition = "2021"
 crate-type = ["rlib", "dylib"]
 
 [dependencies]
-vera = { path = "../../.." }
+vera-shapes = { path = "../../../vera-shapes" }

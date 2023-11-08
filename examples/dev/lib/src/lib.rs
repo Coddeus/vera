@@ -1,7 +1,6 @@
-use vera::shape::*;
+use vera_shapes::*;
 
-#[no_mangle]
-pub fn get() -> Vec<Shape> {
+pub fn get<V: Vertex>() -> Vec<Shape<V>> {
     vec![
         Triangle::new(
             0.5, 0.5,

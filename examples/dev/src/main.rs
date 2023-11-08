@@ -4,7 +4,7 @@ use vera::*;
     dylib = "lib"
 )]
 mod hot_lib {
-    use vera::shape::*;
+    use vera_shapes::*;
     hot_functions_from_file!("lib/src/lib.rs");
 }
 
