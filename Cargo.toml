@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "examples/*",
     "vera",
     "vera-shapes",
+    "vera-transform",
 ]
 resolver = "2"
 
@@ -13,3 +13,7 @@ path = "vera"
 [workspace.dependencies.vera-shapes]
 version = "0.2.0"
 path = "vera-shapes"
+
+[workspace.dependencies.vera-transform]
+version = "0.2.0"
+path = "vera-transform"

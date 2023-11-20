@@ -3,7 +3,7 @@ resolver = "2"
 members = ["lib"]
 
 [package]
-name = "vera-dev"
+name = "vera-example-dev"
 version = "0.1.0"
 edition = "2021"
 

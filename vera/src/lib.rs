@@ -226,7 +226,7 @@ impl Vera {
     /// Sets up Vera with Vulkan
     /// - `max-vertices` is the maximum number of vertices that will be shown. Increasing this number will enable more vertices, but will allocate more memory (And 2 buffers are allocated for vertices).
     /// - `elements` 
-    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape<Veratex>>) -> Self {
+    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape>) -> Self {
         // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
@@ -388,7 +388,7 @@ impl Vera {
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
 
@@ -823,13 +823,13 @@ impl Vera {
     }
 
     /// Resets vertex and uniform data with `elements`
-    pub fn reset(&mut self, elements: Vec<Shape<Veratex>>) {
+    pub fn reset(&mut self, elements: Vec<Shape>) {
         // keep ___data in Vk { .. }
         let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
         self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size());
@@ -1063,7 +1063,11 @@ impl Vk {
                 } => {
                     self.window_resized = true;
 
-                    self.general_uniform_data = GeneralData::from_resolution(self.window.inner_size());
+                    let mut new_dimensions = inner_size;
+                    new_dimensions.width = new_dimensions.width.max(1);
+                    new_dimensions.height = new_dimensions.height.max(1);
+
+                    self.general_uniform_data = GeneralData::from_resolution(new_dimensions);
                     unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
                     self.general_uniform_copy_command_buffer.clone()
                         .execute(self.queue.clone())

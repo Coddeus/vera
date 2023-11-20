@@ -5,7 +5,10 @@ use vera::*;
 )]
 mod hot_lib {
     use vera_shapes::*;
-    hot_functions_from_file!("lib/src/lib.rs");
+    // Path form the project root
+    
+    #[hot_function]
+    pub fn get() -> Vec<Shape> { }
 }
 
 fn main() {

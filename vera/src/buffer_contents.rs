@@ -1,6 +1,5 @@
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 use winit::dpi::PhysicalSize;
-use vera_shapes;
 
 /// A base vertex for Vera, meant to be given as input to the graphics pipeline.
 #[derive(BufferContents, Vertex, Debug)]
@@ -13,17 +12,12 @@ pub struct Veratex {
     #[format(R32_UINT)]
     pub(crate) entity_id: u32,
 }
-impl vera_shapes::Vertex for Veratex {
-    /// A new `Veratex` with (x, y) 2D coordinates.
-    fn new(x: f32, y: f32) -> Self {
-        Veratex { position: [x, y], ..Default::default() }
-    }
-}
-impl Default for Veratex {
-    fn default() -> Veratex {
-        Veratex {
-            position: [-0.5, 0.5],
-            entity_id: 0,
+
+impl From<vera_shapes::Vertex> for Veratex {
+    fn from(value: vera_shapes::Vertex) -> Self {
+        Veratex { 
+            position: value.position, 
+            entity_id: value.entity_id
         }
     }
 }
