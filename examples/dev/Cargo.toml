@@ -3,11 +3,12 @@ resolver = "2"
 members = ["lib"]
 
 [package]
-name = "vera_dev"
+name = "vera-example-dev"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 lib = { path = "./lib" }
 hot-lib-reloader = "^0.6"
-vera = { path = "../.." }
+vera = { path = "../../vera" }
+vera-shapes = { path = "../../vera-shapes" }

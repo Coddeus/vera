@@ -4,8 +4,11 @@ use vera::*;
     dylib = "lib"
 )]
 mod hot_lib {
-    use vera::shape::*;
-    hot_functions_from_file!("lib/src/lib.rs");
+    use vera_shapes::*;
+    // Path form the project root
+    
+    #[hot_function]
+    pub fn get() -> Vec<Shape> { }
 }
 
 fn main() {

@@ -1,0 +1,20 @@
+[package]
+name = "vera-transform"
+version = "0.2.0"
+# author = "Coddeus"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Vulkan Engine in Rust for Animation"
+documentation = "https://docs.rs/vera-transform"
+repository = "https://github.com/Coddeus/vera"
+readme = "README.md"
+keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
+categories = ["graphics", "multimedia::video", "rendering::engine"]
+
+[dependencies]
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3

@@ -3,10 +3,10 @@
 
 // pub mod elements;
 // pub use elements::*;
-pub mod transform;
-pub use transform::*;
-pub mod shape;
-pub use shape::*;
+pub mod buffer_contents;
+pub use buffer_contents::*;
+use vera_shapes::Shape;
+
 
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -388,7 +388,7 @@ impl Vera {
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
 
@@ -829,7 +829,7 @@ impl Vera {
             .into_iter()
             .enumerate()
             .flat_map(|shape| shape.1.vertices.into_iter()
-                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex})
+                .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
         self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size());
@@ -1063,7 +1063,11 @@ impl Vk {
                 } => {
                     self.window_resized = true;
 
-                    self.general_uniform_data = GeneralData::from_resolution(self.window.inner_size());
+                    let mut new_dimensions = inner_size;
+                    new_dimensions.width = new_dimensions.width.max(1);
+                    new_dimensions.height = new_dimensions.height.max(1);
+
+                    self.general_uniform_data = GeneralData::from_resolution(new_dimensions);
                     unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
                     self.general_uniform_copy_command_buffer.clone()
                         .execute(self.queue.clone())

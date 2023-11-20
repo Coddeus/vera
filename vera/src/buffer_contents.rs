@@ -1,5 +1,26 @@
-use vulkano::buffer::BufferContents;
+use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 use winit::dpi::PhysicalSize;
+
+/// A base vertex for Vera, meant to be given as input to the graphics pipeline.
+#[derive(BufferContents, Vertex, Debug)]
+#[repr(C)]
+pub struct Veratex {
+    /// The (x, y) [normalized-square-centered](broken link) coordinates of the vertex.
+    #[format(R32G32_SFLOAT)]
+    pub(crate) position: [f32; 2],
+    /// The id of the entity. Used and overriden when calling `vera::Vera::set()`
+    #[format(R32_UINT)]
+    pub(crate) entity_id: u32,
+}
+
+impl From<vera_shapes::Vertex> for Veratex {
+    fn from(value: vera_shapes::Vertex) -> Self {
+        Veratex { 
+            position: value.position, 
+            entity_id: value.entity_id
+        }
+    }
+}
 
 /// General-purpose uniform data
 #[derive(Debug, Clone, BufferContents)]

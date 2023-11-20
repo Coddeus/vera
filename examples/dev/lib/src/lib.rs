@@ -1,4 +1,4 @@
-use vera::shape::*;
+use vera_shapes::*;
 
 #[no_mangle]
 pub fn get() -> Vec<Shape> {
