@@ -2,7 +2,6 @@
 members = [
     "vera",
     "vera-shapes",
-    "vera-transform",
 ]
 resolver = "2"
 
@@ -14,6 +13,9 @@ path = "vera"
 version = "0.2.0"
 path = "vera-shapes"
 
-[workspace.dependencies.vera-transform]
-version = "0.2.0"
-path = "vera-transform"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3

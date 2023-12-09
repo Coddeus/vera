@@ -1,4 +1,4 @@
-use vera_shapes::*;
+use vera_shapes::{Shape, Triangle};
 
 #[no_mangle]
 pub fn get() -> Vec<Shape> {

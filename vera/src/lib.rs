@@ -8,8 +8,13 @@ pub use buffer_contents::*;
 use vera_shapes::Shape;
 
 
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator};
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
+use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
+use vulkano::pipeline::graphics::multisample::MultisampleState;
+use vulkano::pipeline::graphics::rasterization::RasterizationState;
+use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -25,27 +30,26 @@ use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
+use vulkano::image::{ImageUsage, Image};
+use vulkano::instance::{Instance, InstanceCreateInfo, InstanceCreateFlags};
 use vulkano::memory::allocator::{
-    AllocationCreateInfo, GenericMemoryAllocator, MemoryUsage, StandardMemoryAllocator,
+    AllocationCreateInfo, GenericMemoryAllocator, StandardMemoryAllocator, MemoryTypeFilter, FreeListAllocator,
 };
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::Vertex;
+use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineShaderStageCreateInfo, PipelineLayout, DynamicState};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
-use vulkano::shader::ShaderModule;
+use vulkano::shader::EntryPoint;
 use vulkano::swapchain::{
-    self, AcquireError, Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-    SwapchainPresentInfo, PresentFuture, SwapchainAcquireFuture,
+    Surface, Swapchain, SwapchainCreateInfo,
+    SwapchainPresentInfo, PresentFuture, SwapchainAcquireFuture, acquire_next_image,
 };
 use vulkano::sync::future::{FenceSignalFuture, JoinFuture};
-use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
-use vulkano_win::VkSurfaceBuild;
+use vulkano::sync::{self, GpuFuture};
+use vulkano::{Version, VulkanError, Validated};
 
-use winit::dpi::{LogicalSize, PhysicalSize};
+use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
@@ -71,12 +75,12 @@ pub struct Vk {
     queue: Arc<Queue>,
 
     swapchain: Arc<Swapchain>,
-    images: Vec<Arc<SwapchainImage>>,
+    images: Vec<Arc<Image>>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
     // -----
-    memory_allocator: GenericMemoryAllocator<Arc<vulkano::memory::allocator::FreeListAllocator>>,
+    memory_allocator: Arc<GenericMemoryAllocator<FreeListAllocator>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
 
@@ -108,24 +112,25 @@ pub struct Vk {
     // uniform_update_command_buffer: Arc<PrimaryAutoCommandBuffer>,
 
     // -----
-    drawing_vs: Arc<ShaderModule>,
-    drawing_fs: Arc<ShaderModule>,
+    drawing_vs: EntryPoint,
+    drawing_fs: EntryPoint,
     drawing_viewport: Viewport,
     drawing_pipeline: Arc<GraphicsPipeline>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     descriptor_set_layout_index: usize,
-    drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
+    // drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>>,
     frames_in_flight: usize,
     drawing_fences: Vec<Option<Arc<FenceSignalFuture<PresentFuture<CommandBufferExecFuture<JoinFuture<Box<dyn GpuFuture>, SwapchainAcquireFuture>>>>>>>,
     previous_drawing_fence_i: u32,
 
     // -----
-    window_resized: bool,
+    // window_resized: bool,
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
     recreate_swapchain: bool,
     show_count: u32,
 
     // -----
-    // Test speed of allocation vs clone every time
+    // // Test speed of allocation vs clone every time
     general_uniform_data: GeneralData,
     // entities_uniform_data,
     // entities_number,
@@ -224,40 +229,34 @@ mod fs {
 
 impl Vera {
     /// Sets up Vera with Vulkan
-    /// - `max-vertices` is the maximum number of vertices that will be shown. Increasing this number will enable more vertices, but will allocate more memory (And 2 buffers are allocated for vertices).
-    /// - `elements` 
-    pub fn create(max_vertices: u64, max_entities: u64, elements: Vec<Shape>) -> Self {
-        // Extensions/instance/event_loop/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
+    /// - `elements` define all Shapes
+    pub fn create(elements: Vec<Shape>) -> Self {
+        // Event_loop/extensions/instance/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
+        let event_loop = EventLoop::new();
         let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
-        let required_extensions = vulkano_win::required_extensions(&library);
+        let required_extensions = Surface::required_extensions(&event_loop);
         let instance = Instance::new(
             library.clone(),
             InstanceCreateInfo {
                 application_name: Some("Vera".to_owned()),
-                application_version: Version::major_minor(0, 1),
+                application_version: Version::major_minor(0, 2),
                 enabled_extensions: required_extensions,
+                flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 ..Default::default()
             },
         )
         .expect("failed to create instance");
 
-        let event_loop = EventLoop::new();
-        let surface = WindowBuilder::new()
-            .with_inner_size(LogicalSize { width: 800, height: 600 })
-            .with_resizable(true)
-            .with_title(PKG_NAME)
-            .with_transparent(false)
-            .build_vk_surface(&event_loop, instance.clone())
-            .unwrap();
-
-        let window = surface
-            .object()
-            .unwrap()
-            .clone()
-            .downcast::<Window>()
-            .unwrap();
-
+        let window = Arc::new(
+            WindowBuilder::new()
+                .with_inner_size(LogicalSize { width: 800, height: 600 })
+                .with_resizable(true)
+                .with_title("Vera")
+                .with_transparent(true)
+                .build(&event_loop).unwrap()
+        );
+        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
@@ -288,6 +287,12 @@ impl Vera {
             })
             .expect("no device available");
 
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
         let (device, mut queues) = Device::new(
             physical_device.clone(),
             DeviceCreateInfo {
@@ -309,12 +314,10 @@ impl Vera {
 
             let dimensions = window.inner_size();
             let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
-            let image_format = Some(
-                physical_device
+            let image_format = physical_device.clone()
                     .surface_formats(&surface, Default::default())
                     .unwrap()[0]
-                    .0,
-            );
+                    .0;
 
             Swapchain::new(
                 device.clone(),
@@ -335,10 +338,10 @@ impl Vera {
             device.clone(),
             attachments: {
                 color: {
-                    load: Clear,
-                    store: Store,
                     format: swapchain.image_format(), // set the format the same as the swapchain
                     samples: 1, // TODOSAMPLES
+                    load_op: Clear,
+                    store_op: Store,
                 },
             },
             pass: {
@@ -361,16 +364,16 @@ impl Vera {
                 )
                 .unwrap()
             })
-            .collect::<Vec<_>>();
-
+            .collect::<Vec<Arc<Framebuffer>>>();
+            
         // ---------------------------------------------------------------------------------------------------------------------------------
 
         // Allocators
         // ----------
-        let memory_allocator = StandardMemoryAllocator::new_default(device.clone());
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
         // ----------
 
@@ -379,6 +382,7 @@ impl Vera {
         // // If the entities fit (inlcuding the other uniforms), use UBO, otherwise use SSBO
         let max_uniform_buffer_size: u32 = physical_device.properties().max_uniform_buffer_range;
         let max_storage_buffer_size: u32 = physical_device.properties().max_storage_buffer_range;
+        println!("max_uniform_buffer_size: {}\nmax_storage_buffer_size: {}\n", max_uniform_buffer_size, max_storage_buffer_size);
 
         // ----------------
 
@@ -391,13 +395,15 @@ impl Vera {
                 .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
+        let vertex_data_len = vertex_data.len() as u64;
 
         // Uniform data for the *uniform* sections
-        let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size());
+        let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size().into());
         let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        let entities_uniform_data_len = entities_uniform_data.len() as u64;
 
-        let staging_vertex_buffer: Subbuffer<[Veratex]> = Buffer::new_slice::<Veratex>(
-            &memory_allocator,
+        let staging_vertex_buffer: Subbuffer<[Veratex]> = Buffer::from_iter(
+            memory_allocator.clone(),
             BufferCreateInfo {
                 // Specify this buffer will be used as a transfer source.
                 usage: BufferUsage::TRANSFER_SRC,
@@ -405,19 +411,15 @@ impl Vera {
             },
             AllocationCreateInfo {
                 // Specify this buffer will be used for uploading to the GPU.
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            max_vertices,
+            vertex_data,
         )
         .expect("failed to create staging_vertex_buffer");
 
-        for (o, i) in staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
-            unsafe { std::ptr::write(o, i) };
-        }
-
         let vertex_buffer: Subbuffer<[Veratex]> = Buffer::new_slice::<Veratex>(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER
                     | BufferUsage::TRANSFER_DST
@@ -425,10 +427,10 @@ impl Vera {
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::DeviceOnly,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-            max_vertices,
+            vertex_data_len,
         )
         .expect("failed to create vertex_buffer");
 
@@ -447,7 +449,7 @@ impl Vera {
             ))
             .unwrap();
 
-        let vertex_copy_command_buffer: Arc<PrimaryAutoCommandBuffer> = Arc::new(vertex_cbb.build().unwrap());
+        let vertex_copy_command_buffer: Arc<PrimaryAutoCommandBuffer> = vertex_cbb.build().unwrap();
 
         vertex_copy_command_buffer.clone()
             .execute(queue.clone())
@@ -463,29 +465,28 @@ impl Vera {
 
         // Staging & Device-local uniform buffers for general data, and their copy command buffers
         // ---------------------------------------------------------------------------------------
-        let general_staging_uniform_buffer = Buffer::new_sized::<GeneralData>(
-            &memory_allocator,
+        let general_staging_uniform_buffer = Buffer::from_data(
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
+            general_uniform_data.clone()
         )
         .expect("failed to create staging_uniform_buffer");
 
-        unsafe { std::ptr::write(&mut *general_staging_uniform_buffer.write().unwrap(), general_uniform_data.clone()) };
-
         let general_uniform_buffer = Buffer::new_sized::<GeneralData>(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::DeviceOnly,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
         )
@@ -505,7 +506,7 @@ impl Vera {
             ))
             .unwrap();
 
-        let general_uniform_copy_command_buffer = Arc::new(general_uniform_copy_cbb.build().unwrap());
+        let general_uniform_copy_command_buffer = general_uniform_copy_cbb.build().unwrap();
         
         general_uniform_copy_command_buffer.clone()
             .execute(queue.clone())
@@ -522,35 +523,31 @@ impl Vera {
         // Staging & Device-local uniform buffers for entities, and their copy & update command buffers  // TODOCOMPUTEUPDATE
         // --------------------------------------------------------------------------------------------
 
-        let entities_staging_uniform_buffer = Buffer::new_slice::<EntitiesData>(
-            &memory_allocator,
+        let entities_staging_uniform_buffer = Buffer::from_iter(
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::Upload,
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            max_entities,
+            entities_uniform_data,
         )
         .expect("failed to create staging_uniform_buffer");
 
-        for (o, i) in entities_staging_uniform_buffer.write().unwrap().iter_mut().zip(entities_uniform_data) {
-            unsafe { std::ptr::write(o, i) };
-        }
-
         let entities_uniform_buffer = Buffer::new_slice::<EntitiesData>(
-            &memory_allocator,
+            memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
             AllocationCreateInfo {
-                usage: MemoryUsage::DeviceOnly,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-            max_entities,
+            entities_uniform_data_len,
         )
         .expect("failed to create uniform_buffer");
 
@@ -568,7 +565,7 @@ impl Vera {
             ))
             .unwrap();
 
-        let entities_uniform_copy_command_buffer = Arc::new(entities_uniform_copy_cbb.build().unwrap());
+        let entities_uniform_copy_command_buffer = entities_uniform_copy_cbb.build().unwrap();
         
         entities_uniform_copy_command_buffer.clone()
             .execute(queue.clone())
@@ -640,26 +637,109 @@ impl Vera {
 
         // Graphics pipeline & Drawing command buffer
         // ------------------------------------------
-        let drawing_vs = vs::load(device.clone()).expect("failed to create vertex shader module");
-        let drawing_fs = fs::load(device.clone()).expect("failed to create fragment shader module");
+        let drawing_vs = vs::load(device.clone()).unwrap().entry_point("main").expect("failed to create vertex shader module");
+        let drawing_fs = fs::load(device.clone()).unwrap().entry_point("main").expect("failed to create fragment shader module");
 
         let drawing_viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: window.inner_size().into(),
-            depth_range: 0.0..1.0,
+            offset: [0.0, 0.0],
+            extent: [0.0, 0.0],
+            depth_range: 0.0..=1.0,
         };
 
-        let drawing_pipeline = GraphicsPipeline::start()
-            .vertex_input_state(Veratex::per_vertex())
-            .vertex_shader(drawing_vs.entry_point("main").unwrap(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-                drawing_viewport.clone(),
-            ]))
-            .fragment_shader(drawing_fs.entry_point("main").unwrap(), ())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
+        
+
+    // Before we draw, we have to create what is called a **pipeline**. A pipeline describes how
+    // a GPU operation is to be performed. It is similar to an OpenGL program, but it also contains
+    // many settings for customization, all baked into a single object. For drawing, we create
+    // a **graphics** pipeline, but there are also other types of pipeline.
+    let drawing_pipeline: Arc<GraphicsPipeline> = {
+        // First, we load the shaders that the pipeline will use:
+        // the vertex shader and the fragment shader.
+        //
+        // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
+        // one.
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
             .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+
+        // Automatically generate a vertex input state from the vertex shader's input interface,
+        // that takes a single vertex buffer containing `Vertex` structs.
+        let vertex_input_state = Veratex::per_vertex()
+            .definition(&vs.info().input_interface)
+            .unwrap();
+
+        // Make a list of the shader stages that the pipeline will have.
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs),
+            PipelineShaderStageCreateInfo::new(fs),
+        ];
+
+        // We must now create a **pipeline layout** object, which describes the locations and types of
+        // descriptor sets and push constants used by the shaders in the pipeline.
+        //
+        // Multiple pipelines can share a common layout object, which is more efficient.
+        // The shaders in a pipeline must use a subset of the resources described in its pipeline
+        // layout, but the pipeline layout is allowed to contain resources that are not present in the
+        // shaders; they can be used by shaders in other pipelines that share the same layout.
+        // Thus, it is a good idea to design shaders so that many pipelines have common resource
+        // locations, which allows them to share pipeline layouts.
+        let pipeline_layout = PipelineLayout::new(
+            device.clone(),
+            // Since we only have one pipeline in this example, and thus one pipeline layout,
+            // we automatically generate the creation info for it from the resources used in the
+            // shaders. In a real application, you would specify this information manually so that you
+            // can re-use one layout in multiple pipelines.
+            PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                .into_pipeline_layout_create_info(device.clone())
+                .unwrap(),
+        )
+        .unwrap();
+
+        // We have to indicate which subpass of which render pass this pipeline is going to be used
+        // in. The pipeline will only be usable from this particular subpass.
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
+        // Finally, create the pipeline.
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                stages: stages.into_iter().collect(),
+                // How vertex data is read from the vertex buffers into the vertex shader.
+                vertex_input_state: Some(vertex_input_state),
+                // How vertices are arranged into primitive shapes.
+                // The default primitive shape is a triangle.
+                input_assembly_state: Some(InputAssemblyState::default()),
+                // How primitives are transformed and clipped to fit the framebuffer.
+                // We use a resizable viewport, set to draw over the entire window.
+                viewport_state: Some(ViewportState::default()),
+                // How polygons are culled and converted into a raster of pixels.
+                // The default value does not perform any culling.
+                rasterization_state: Some(RasterizationState::default()),
+                // How multiple fragment shader samples are converted to a single pixel value.
+                // The default value does not perform any multisampling.
+                multisample_state: Some(MultisampleState::default()),
+                // How pixel values are combined with the values already present in the framebuffer.
+                // The default value overwrites the old value with the new one, without any blending.
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    subpass.num_color_attachments(),
+                    ColorBlendAttachmentState::default(),
+                )),
+                // Dynamic states allows us to specify parts of the pipeline settings when
+                // recording the command buffer, before we perform drawing.
+                // Here, we specify that the viewport should be dynamic.
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                subpass: Some(subpass.into()),
+                ..GraphicsPipelineCreateInfo::layout(pipeline_layout)
+            },
+        )
+        .unwrap()
+    };
 
         
         let pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = drawing_pipeline.layout();
@@ -682,6 +762,7 @@ impl Vera {
                     entities_uniform_buffer.clone(),
                 ),
             ],
+            [],
         )
         .unwrap();
 
@@ -691,41 +772,46 @@ impl Vera {
         // 2. Copy data from staging_uniform_buffer to final_uniform_buffer,             //
         // 2. Swap swapchain images,                                                     // Done
 
-        let drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>> = framebuffers
-            .iter()
-            .map(|framebuffer| {
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    &command_buffer_allocator,
-                    queue.queue_family_index(),
-                    CommandBufferUsage::MultipleSubmit,
-                )
-                .unwrap();
-
-                builder
-                    .begin_render_pass(
-                        RenderPassBeginInfo {
-                            clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
-                            ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
-                        },
-                        SubpassContents::Inline,
-                    )
-                    .unwrap()
-                    .bind_pipeline_graphics(drawing_pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        pipeline_layout.clone(),
-                        descriptor_set_layout_index as u32,
-                        descriptor_set.clone(),
-                    )
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap();
-
-                Arc::new(builder.build().unwrap())
-            })
-            .collect();
+        // let drawing_command_buffers: Vec<Arc<PrimaryAutoCommandBuffer>> = framebuffers
+        //     .iter()
+        //     .map(|framebuffer| {
+        //         let mut builder = AutoCommandBufferBuilder::primary(
+        //             &command_buffer_allocator,
+        //             queue.queue_family_index(),
+        //             CommandBufferUsage::MultipleSubmit,
+        //         )
+        //         .unwrap();
+        //  
+        //         builder
+        //             .begin_render_pass(
+        //                 RenderPassBeginInfo {
+        //                     clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
+        //                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
+        //                 },
+        //                 vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
+        //             )
+        //             .unwrap()
+        //             .set_viewport(0, [drawing_viewport.clone()].into_iter().collect())
+        //             .unwrap()
+        //             .bind_pipeline_graphics(drawing_pipeline.clone())
+        //             .unwrap()
+        //             .bind_descriptor_sets(
+        //                 PipelineBindPoint::Graphics,
+        //                 pipeline_layout.clone(),
+        //                 descriptor_set_layout_index as u32,
+        //                 descriptor_set.clone(),
+        //             )
+        //             .unwrap()
+        //             .bind_vertex_buffers(0, vertex_buffer.clone())
+        //             .unwrap()
+        //             .draw(vertex_buffer.len() as u32, 1, 0, 0)
+        //             .unwrap()
+        //             .end_render_pass(Default::default())
+        //             .unwrap();
+        // 
+        //         builder.build().unwrap()
+        //     })
+        //     .collect();
 
         let frames_in_flight: usize = images.len();
         let drawing_fences: Vec<Option<Arc<FenceSignalFuture<_>>>> = vec![None; frames_in_flight];
@@ -735,7 +821,7 @@ impl Vera {
 
         // Window-related updates
         // ----------------------
-        let window_resized: bool = false;
+        let previous_frame_end: Option<Box<dyn GpuFuture>> = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain: bool = false;
         let show_count: u32 = 0;
         
@@ -803,13 +889,13 @@ impl Vera {
                 descriptor_set,
                 descriptor_set_layout_index,
                 drawing_pipeline,
-                drawing_command_buffers,
+                // drawing_command_buffers,
                 frames_in_flight,
                 drawing_fences,
                 previous_drawing_fence_i,
 
                 // -----
-                window_resized,
+                previous_frame_end,
                 recreate_swapchain,
                 show_count,
 
@@ -832,9 +918,9 @@ impl Vera {
                 .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
             )
             .collect::<Vec<Veratex>>();
-        self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size());
+        self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size().into());
         let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
-
+        
         for (o, i) in self.vk.staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
             unsafe { std::ptr::write(o, i) };
         }
@@ -864,6 +950,192 @@ impl Vera {
             .unwrap()
             .wait(None /* timeout */)
             .unwrap();
+
+
+        // let vertex_data: Vec<Veratex> = elements
+        //     .into_iter()
+        //     .enumerate()
+        //     .flat_map(|shape| shape.1.vertices.into_iter()
+        //         .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
+        //     )
+        //     .collect::<Vec<Veratex>>();
+        // let vertex_data_len = vertex_data.len() as u64;
+// 
+        // // Uniform data for the *uniform* sections
+        // let general_uniform_data: GeneralData = GeneralData::from_resolution(self.vk.window.inner_size().into());
+        // let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        // let entities_uniform_data_len = entities_uniform_data.len() as u64;
+// 
+        // self.vk.staging_vertex_buffer = Buffer::from_iter(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         // Specify this buffer will be used as a transfer source.
+        //         usage: BufferUsage::TRANSFER_SRC,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         // Specify this buffer will be used for uploading to the GPU.
+        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+        //         ..Default::default()
+        //     },
+        //     vertex_data,
+        // )
+        // .expect("failed to create staging_vertex_buffer");
+// 
+        // self.vk.vertex_buffer = Buffer::new_slice::<Veratex>(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER
+        //             | BufferUsage::TRANSFER_DST
+        //             | BufferUsage::VERTEX_BUFFER,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+        //         ..Default::default()
+        //     },
+        //     vertex_data_len,
+        // )
+        // .expect("failed to create vertex_buffer");
+// 
+        // // Not kept
+        // let mut vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> = AutoCommandBufferBuilder::primary(
+        //     &self.vk.command_buffer_allocator,
+        //     self.vk.queue.queue_family_index(),
+        //     CommandBufferUsage::MultipleSubmit,
+        // )
+        // .expect("failed to create vertex_cbb");
+// 
+        // vertex_cbb
+        //     .copy_buffer(CopyBufferInfo::buffers(
+        //         self.vk.staging_vertex_buffer.clone(),
+        //         self.vk.vertex_buffer.clone(),
+        //     ))
+        //     .unwrap();
+// 
+        // let vertex_copy_command_buffer: Arc<PrimaryAutoCommandBuffer> = vertex_cbb.build().unwrap();
+// 
+        // vertex_copy_command_buffer.clone()
+        //     .execute(self.vk.queue.clone())
+        //     .unwrap()
+        //     .then_signal_fence_and_flush()
+        //     .unwrap()
+        //     .wait(None /* timeout */)
+        //     .unwrap();
+// 
+        // // ------------------------------------------------------------------------------
+// 
+        // // Staging & Device-local uniform buffers for general data, and their copy command buffers
+        // // ---------------------------------------------------------------------------------------
+        // self.vk.general_staging_uniform_buffer = Buffer::from_data(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::TRANSFER_SRC,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+        //         ..Default::default()
+        //     },
+        //     general_uniform_data.clone()
+        // )
+        // .expect("failed to create staging_uniform_buffer");
+// 
+        // self.vk.general_uniform_buffer = Buffer::new_sized::<GeneralData>(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+        //         ..Default::default()
+        //     },
+        // )
+        // .expect("failed to create uniform_buffer");
+// 
+        // let mut general_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
+        //     &self.vk.command_buffer_allocator,
+        //     self.vk.queue.queue_family_index(),
+        //     CommandBufferUsage::MultipleSubmit,
+        // )
+        // .expect("failed to create uniform_copy_cbb");
+// 
+        // general_uniform_copy_cbb
+        //     .copy_buffer(CopyBufferInfo::buffers(
+        //         self.vk.general_staging_uniform_buffer.clone(),
+        //         self.vk.general_uniform_buffer.clone(),
+        //     ))
+        //     .unwrap();
+// 
+        // let general_uniform_copy_command_buffer = general_uniform_copy_cbb.build().unwrap();
+        // 
+        // general_uniform_copy_command_buffer.clone()
+        //     .execute(self.vk.queue.clone())
+        //     .unwrap()
+        //     .then_signal_fence_and_flush()
+        //     .unwrap()
+        //     .wait(None /* timeout */)
+        //     .unwrap();
+// 
+        // // ---------------------------------------------------------------------------------------
+// 
+        // // Staging & Device-local uniform buffers for entities, and their copy & update command buffers  // TODOCOMPUTEUPDATE
+        // // --------------------------------------------------------------------------------------------
+// 
+        // self.vk.entities_staging_uniform_buffer = Buffer::from_iter(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::TRANSFER_SRC,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+        //         ..Default::default()
+        //     },
+        //     entities_uniform_data,
+        // )
+        // .expect("failed to create staging_uniform_buffer");
+// 
+        // self.vk.entities_uniform_buffer = Buffer::new_slice::<EntitiesData>(
+        //     self.vk.memory_allocator.clone(),
+        //     BufferCreateInfo {
+        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
+        //         ..Default::default()
+        //     },
+        //     AllocationCreateInfo {
+        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+        //         ..Default::default()
+        //     },
+        //     entities_uniform_data_len,
+        // )
+        // .expect("failed to create uniform_buffer");
+// 
+        // let mut entities_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
+        //     &self.vk.command_buffer_allocator,
+        //     self.vk.queue.queue_family_index(),
+        //     CommandBufferUsage::MultipleSubmit,
+        // )
+        // .expect("failed to create uniform_copy_cbb");
+// 
+        // entities_uniform_copy_cbb
+        //     .copy_buffer(CopyBufferInfo::buffers(
+        //         self.vk.entities_staging_uniform_buffer.clone(),
+        //         self.vk.entities_uniform_buffer.clone(),
+        //     ))
+        //     .unwrap();
+// 
+        // let entities_uniform_copy_command_buffer = entities_uniform_copy_cbb.build().unwrap();
+        // 
+        // entities_uniform_copy_command_buffer.clone()
+        //     .execute(self.vk.queue.clone())
+        //     .unwrap()
+        //     .then_signal_fence_and_flush()
+        //     .unwrap()
+        //     .wait(None /* timeout */)
+        //     .unwrap();
+// 
+        // let entities_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>> = None;
         
         // let uniform_data = vec![UniformData::empty()];
         // let uniform_data_len = uniform_data.len() as u64;
@@ -875,7 +1147,7 @@ impl Vera {
         //         ..Default::default()
         //     },
         //     AllocationCreateInfo {
-        //         usage: MemoryUsage::Upload,
+        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST,
         //         ..Default::default()
         //     },
         //     uniform_data,
@@ -889,7 +1161,7 @@ impl Vera {
         //         ..Default::default()
         //     },
         //     AllocationCreateInfo {
-        //         usage: MemoryUsage::DeviceOnly,
+        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
         //         ..Default::default()
         //     },
         //     uniform_data_len,
@@ -1031,7 +1303,7 @@ impl Vera {
     pub fn save(&mut self, width: u32, height: u32) {
         match self.vk.show(&mut self.event_loop, (width, height)) {
             0 => { // Successfully finished
-                println!("✨ Successfully saved video!");
+                println!("✨ Saved video!");
             }
             1 => { // Window closed 
                 println!("⁉ Window closed. Stopping encoding now.");
@@ -1058,24 +1330,10 @@ impl Vk {
                     *control_flow = ControlFlow::ExitWithCode(1);
                 }
                 Event::WindowEvent {
-                    event: WindowEvent::Resized( inner_size ),
+                    event: WindowEvent::Resized(_),
                     ..
                 } => {
-                    self.window_resized = true;
-
-                    let mut new_dimensions = inner_size;
-                    new_dimensions.width = new_dimensions.width.max(1);
-                    new_dimensions.height = new_dimensions.height.max(1);
-
-                    self.general_uniform_data = GeneralData::from_resolution(new_dimensions);
-                    unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
-                    self.general_uniform_copy_command_buffer.clone()
-                        .execute(self.queue.clone())
-                        .unwrap()
-                        .then_signal_fence_and_flush()
-                        .unwrap()
-                        .wait(None /* timeout */)
-                        .unwrap();
+                    self.recreate_swapchain = true;
                 }
                 Event::MainEventsCleared => {
                     // if elements.ended() {
@@ -1103,26 +1361,26 @@ impl Vk {
 
     /// Draws a frame
     fn draw(&mut self) {
-        if self.window_resized || self.recreate_swapchain {
+        if self.recreate_swapchain {
             self.recreate_swapchain = false;
 
-            let mut new_dimensions = self.window.inner_size();
-            new_dimensions.width = new_dimensions.width.max(1);
-            new_dimensions.height = new_dimensions.height.max(1);
+            let image_extent: [u32; 2] = self.window.inner_size().into();
 
-            let (new_swapchain, new_images) =
-                match self.swapchain.recreate(SwapchainCreateInfo {
-                    image_extent: new_dimensions.into(),
+            if image_extent.contains(&0) {
+                return;
+            }
+
+            (self.swapchain, self.images) =
+                self.swapchain.recreate(SwapchainCreateInfo {
+                    image_extent,
                     ..self.swapchain.create_info()
-                }) {
-                    Ok(r) => r,
-                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
-                        return
-                    }
-                    Err(e) => panic!("failed to recreate swapchain: {e}"),
-                };
-            self.swapchain = new_swapchain;
-            let new_framebuffers = new_images
+                })
+                .expect("failed to recreate swapchain");
+
+            let extent = self.images[0].extent();
+            self.drawing_viewport.extent = [extent[0] as f32, extent[1] as f32];
+
+            self.framebuffers = self.images
                 .iter()
                 .map(|image| {
                     let view = ImageView::new_default(image.clone()).unwrap();
@@ -1137,69 +1395,22 @@ impl Vk {
                 })
                 .collect::<Vec<_>>();
 
-            if self.window_resized {
-                self.window_resized = false;
-
-                self.drawing_viewport.dimensions = new_dimensions.into();
-
-                let new_pipeline = GraphicsPipeline::start()
-                    .vertex_input_state(Veratex::per_vertex())
-                    .vertex_shader(self.drawing_vs.entry_point("main").unwrap(), ())
-                    .input_assembly_state(InputAssemblyState::new())
-                    .viewport_state(ViewportState::viewport_fixed_scissor_irrelevant([
-                        self.drawing_viewport.clone(),
-                    ]))
-                    .fragment_shader(self.drawing_fs.entry_point("main").unwrap(), ())
-                    .render_pass(Subpass::from(self.render_pass.clone(), 0).unwrap())
-                    .build(self.device.clone())
-                    .unwrap();
-
-                self.drawing_command_buffers = new_framebuffers
-                    .iter()
-                    .map(|framebuffer| {
-                        let mut builder = AutoCommandBufferBuilder::primary(
-                            &self.command_buffer_allocator,
-                            self.queue.queue_family_index(),
-                            CommandBufferUsage::MultipleSubmit,
-                        )
-                        .unwrap();
-
-                        builder
-                            .begin_render_pass(
-                                RenderPassBeginInfo {
-                                    clear_values: vec![Some(
-                                        [0.0, 0.0, 0.0, 0.0].into(),
-                                    )],
-                                    ..RenderPassBeginInfo::framebuffer(
-                                        framebuffer.clone(),
-                                    )
-                                },
-                                SubpassContents::Inline,
-                            )
-                            .unwrap()
-                            .bind_pipeline_graphics(new_pipeline.clone())
-                            .bind_vertex_buffers(0, self.vertex_buffer.clone())
-                            .bind_descriptor_sets(
-                                PipelineBindPoint::Graphics,
-                                new_pipeline.layout().clone(),
-                                self.descriptor_set_layout_index as u32,
-                                self.descriptor_set.clone(),
-                            )
-                            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-                            .unwrap()
-                            .end_render_pass()
-                            .unwrap();
-
-                        Arc::new(builder.build().unwrap())
-                    })
-                    .collect()
-            }
+            self.general_uniform_data = GeneralData::from_resolution([extent[0] as f32, extent[1] as f32]);
+            unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
+            self.general_uniform_copy_command_buffer.clone()
+                .execute(self.queue.clone())
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None /* timeout */)
+                .unwrap();
         }
 
+
         let (image_i, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
+            match acquire_next_image(self.swapchain.clone(), None).map_err(Validated::unwrap) {
                 Ok(r) => r,
-                Err(AcquireError::OutOfDate) => {
+                Err(VulkanError::OutOfDate) => {
                     self.recreate_swapchain = true;
                     return;
                 }
@@ -1210,22 +1421,42 @@ impl Vk {
             self.recreate_swapchain = true;
         }
 
-        // wait for the fence related to this image to finish (normally this would be the oldest fence)
-        if let Some(image_fence) = &self.drawing_fences[image_i as usize] {
-            image_fence.wait(None).unwrap();
-        }
+        
+        let mut builder = AutoCommandBufferBuilder::primary(
+            &self.command_buffer_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .unwrap();
 
-        let previous_future = match self.drawing_fences[self.previous_drawing_fence_i as usize].clone() {
-            // Create a NowFuture
-            None => {
-                let mut now = sync::now(self.device.clone());
-                now.cleanup_finished();
+        builder
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
+                    ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
+                },
+                vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
+            )
+            .unwrap()
+            .set_viewport(0, [self.drawing_viewport.clone()].into_iter().collect())
+            .unwrap()
+            .bind_pipeline_graphics(self.drawing_pipeline.clone())
+            .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.drawing_pipeline.layout().clone(),
+                self.descriptor_set_layout_index as u32,
+                self.descriptor_set.clone(),
+            )
+            .unwrap()
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap()
+            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+            .unwrap()
+            .end_render_pass(Default::default())
+            .unwrap();
 
-                now.boxed()
-            }
-            // Use the existing FenceSignalFuture
-            Some(fence) => fence.boxed(),
-        };
+        let drawing_command_buffer = builder.build().unwrap();
 
         // self.uniform_copy_command_buffer.clone().execute(
         //     self.queue.clone(),
@@ -1233,11 +1464,13 @@ impl Vk {
         // .unwrap()
         // .then_signal_fence_and_flush().unwrap();
 
-        let future = previous_future
+        let future = self.previous_frame_end
+            .take()
+            .unwrap()
             .join(acquire_future)
             .then_execute(
                 self.queue.clone(),
-                self.drawing_command_buffers[image_i as usize].clone(),
+                drawing_command_buffer,
             )
             .unwrap()
             .then_swapchain_present(
@@ -1249,17 +1482,19 @@ impl Vk {
             )
             .then_signal_fence_and_flush();
 
-        self.drawing_fences[image_i as usize] = match future {
-            Ok(value) => Some(Arc::new(value)),
-            Err(FlushError::OutOfDate) => {
+        match future.map_err(Validated::unwrap) {
+            Ok(future) => {
+                self.previous_frame_end = Some(future.boxed());
+            }
+            Err(VulkanError::OutOfDate) => {
                 self.recreate_swapchain = true;
-                None
+                self.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
             Err(e) => {
-                println!("failed to flush future: {e}");
-                None
+                panic!("failed to flush future: {e}");
+                // self.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
-        };
+        }
 
         self.previous_drawing_fence_i = image_i;
     }

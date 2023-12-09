@@ -54,20 +54,20 @@ impl GeneralData {
         }
     }
     /// Returns data applying no transformation.
-    pub(crate) fn from_resolution(inner_size: PhysicalSize<u32>) -> Self {
+    pub(crate) fn from_resolution(inner_size: [f32 ; 2]) -> Self {
         GeneralData { 
             view_matrix: [
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
                 0.0, 0.0, 1.0, 0.0,
             ],
-            resolution: [inner_size.width as f32, inner_size.height as f32],
+            resolution: inner_size,
             time: 0.0
         }
     }
     /// Sets the resolution to the given window size
-    pub(crate) fn resolution(&mut self, inner_size: PhysicalSize<u32>) {
-        self.resolution = [inner_size.width as f32, inner_size.height as f32];
+    pub(crate) fn resolution(&mut self, inner_size: [f32 ; 2]) {
+        self.resolution = inner_size;
     }
 }
 
