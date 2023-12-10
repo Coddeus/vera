@@ -23,7 +23,7 @@ use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferInfo, PrimaryAutoCommandBuffer,
-    PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents, CommandBufferExecFuture,
+    PrimaryCommandBufferAbstract, RenderPassBeginInfo, CommandBufferExecFuture,
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{
@@ -114,7 +114,7 @@ pub struct Vk {
     // -----
     drawing_vs: EntryPoint,
     drawing_fs: EntryPoint,
-    drawing_viewport: Viewport,
+    // drawing_viewport: Viewport,
     drawing_pipeline: Arc<GraphicsPipeline>,
     descriptor_set: Arc<PersistentDescriptorSet>,
     descriptor_set_layout_index: usize,
@@ -131,6 +131,7 @@ pub struct Vk {
 
     // -----
     // // Test speed of allocation vs clone every time
+    // vertex_data,
     general_uniform_data: GeneralData,
     // entities_uniform_data,
     // entities_number,
@@ -371,8 +372,7 @@ impl Vera {
         // Allocators
         // ----------
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
         // ----------
@@ -633,18 +633,12 @@ impl Vera {
 
 */
 
-        // --------------------------------------------------------------------------------------------
+    // --------------------------------------------------------------------------------------------
 
-        // Graphics pipeline & Drawing command buffer
-        // ------------------------------------------
-        let drawing_vs = vs::load(device.clone()).unwrap().entry_point("main").expect("failed to create vertex shader module");
-        let drawing_fs = fs::load(device.clone()).unwrap().entry_point("main").expect("failed to create fragment shader module");
-
-        let drawing_viewport = Viewport {
-            offset: [0.0, 0.0],
-            extent: [0.0, 0.0],
-            depth_range: 0.0..=1.0,
-        };
+    // Graphics pipeline & Drawing command buffer
+    // ------------------------------------------
+    let drawing_vs = vs::load(device.clone()).unwrap().entry_point("main").expect("failed to create vertex shader module");
+    let drawing_fs = fs::load(device.clone()).unwrap().entry_point("main").expect("failed to create fragment shader module");
 
         
 
@@ -885,7 +879,7 @@ impl Vera {
                 // -----
                 drawing_vs,
                 drawing_fs,
-                drawing_viewport,
+                // drawing_viewport,
                 descriptor_set,
                 descriptor_set_layout_index,
                 drawing_pipeline,
@@ -1361,26 +1355,27 @@ impl Vk {
 
     /// Draws a frame
     fn draw(&mut self) {
+        let image_extent: [u32; 2] = self.window.inner_size().into();
+
+        if image_extent.contains(&0) {
+            return;
+        }
+
+        self.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
         if self.recreate_swapchain {
             self.recreate_swapchain = false;
 
-            let image_extent: [u32; 2] = self.window.inner_size().into();
-
-            if image_extent.contains(&0) {
-                return;
-            }
-
-            (self.swapchain, self.images) =
+                        (self.swapchain, self.images) =
                 self.swapchain.recreate(SwapchainCreateInfo {
                     image_extent,
                     ..self.swapchain.create_info()
                 })
                 .expect("failed to recreate swapchain");
 
-            let extent = self.images[0].extent();
-            self.drawing_viewport.extent = [extent[0] as f32, extent[1] as f32];
+                        let extent = self.images[0].extent();
 
-            self.framebuffers = self.images
+                        self.framebuffers = self.images
                 .iter()
                 .map(|image| {
                     let view = ImageView::new_default(image.clone()).unwrap();
@@ -1394,6 +1389,57 @@ impl Vk {
                     .unwrap()
                 })
                 .collect::<Vec<_>>();
+
+                        // In the triangle example we use a dynamic viewport, as its a simple example. However in the
+            // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
+            // driver to optimize things, at the cost of slower window resizes.
+            // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
+            self.drawing_pipeline = {
+                let vertex_input_state = [Veratex::per_vertex()]
+                    .definition(&self.drawing_vs.info().input_interface)
+                    .unwrap();
+                let stages = [
+                    PipelineShaderStageCreateInfo::new(self.drawing_vs.clone()),
+                    PipelineShaderStageCreateInfo::new(self.drawing_fs.clone()),
+                ];
+                let layout = PipelineLayout::new(
+                    self.device.clone(),
+                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                        .into_pipeline_layout_create_info(self.device.clone())
+                        .unwrap(),
+                )
+                .unwrap();
+                let subpass = Subpass::from(self.render_pass.clone(), 0).unwrap();
+        
+                GraphicsPipeline::new(
+                    self.device.clone(),
+                    None,
+                    GraphicsPipelineCreateInfo {
+                        stages: stages.into_iter().collect(),
+                        vertex_input_state: Some(vertex_input_state),
+                        input_assembly_state: Some(InputAssemblyState::default()),
+                        viewport_state: Some(ViewportState {
+                            viewports: [Viewport {
+                                offset: [0.0, 0.0],
+                                extent: [extent[0] as f32, extent[1] as f32],
+                                depth_range: 0.0..=1.0,
+                            }]
+                            .into_iter()
+                            .collect(),
+                            ..Default::default()
+                        }),
+                        rasterization_state: Some(RasterizationState::default()),
+                        multisample_state: Some(MultisampleState::default()),
+                        color_blend_state: Some(ColorBlendState::with_attachment_states(
+                            subpass.num_color_attachments(),
+                            ColorBlendAttachmentState::default(),
+                        )),
+                        subpass: Some(subpass.into()),
+                        ..GraphicsPipelineCreateInfo::layout(layout)
+                    },
+                )
+                .unwrap()
+            };
 
             self.general_uniform_data = GeneralData::from_resolution([extent[0] as f32, extent[1] as f32]);
             unsafe { std::ptr::write(&mut *self.general_staging_uniform_buffer.write().unwrap(), self.general_uniform_data.clone()) };
@@ -1421,7 +1467,7 @@ impl Vk {
             self.recreate_swapchain = true;
         }
 
-        
+               
         let mut builder = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
             self.queue.queue_family_index(),
@@ -1435,10 +1481,8 @@ impl Vk {
                     clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
                 },
-                vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
+                Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
             )
-            .unwrap()
-            .set_viewport(0, [self.drawing_viewport.clone()].into_iter().collect())
             .unwrap()
             .bind_pipeline_graphics(self.drawing_pipeline.clone())
             .unwrap()
@@ -1456,7 +1500,7 @@ impl Vk {
             .end_render_pass(Default::default())
             .unwrap();
 
-        let drawing_command_buffer = builder.build().unwrap();
+                let drawing_command_buffer = builder.build().unwrap();
 
         // self.uniform_copy_command_buffer.clone().execute(
         //     self.queue.clone(),
@@ -1482,7 +1526,7 @@ impl Vk {
             )
             .then_signal_fence_and_flush();
 
-        match future.map_err(Validated::unwrap) {
+                match future.map_err(Validated::unwrap) {
             Ok(future) => {
                 self.previous_frame_end = Some(future.boxed());
             }
@@ -1495,8 +1539,6 @@ impl Vk {
                 // self.previous_frame_end = Some(sync::now(self.device.clone()).boxed());
             }
         }
-
-        self.previous_drawing_fence_i = image_i;
     }
 
     /// Encodes a frame to the output video, for saving.
