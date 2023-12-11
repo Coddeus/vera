@@ -12,7 +12,8 @@ keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
 categories = ["graphics", "multimedia::video", "rendering::engine"]
 
 [dependencies]
-# None
+# Least possible
+fastrand = "^2.0"
 
 [profile.dev]
 opt-level = 0

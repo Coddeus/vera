@@ -1,17 +1,19 @@
-// This file is where Vulkan is set up (`Vera::create()`) and actions are handled (`show()`, `save()`, etc.)
-// const hotlibdir: &str = std::env::current_dir().unwrap().join("target/debug").to_str().unwrap();
+// This crate is where Vulkan is set up (`Vera::create()`) and core actions are handled (`show()`, `save()`, etc.)
 
 // pub mod elements;
 // pub use elements::*;
+
+// Buffers which will be sent to the GPU, and rely on the vulkano crate to be compiled
 pub mod buffer_contents;
 pub use buffer_contents::*;
+
 use vera_shapes::Shape;
 
 
-use vulkano::descriptor_set::allocator::{StandardDescriptorSetAllocator};
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
-use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState};
+use vulkano::pipeline::graphics::color_blend::{ColorBlendState, ColorBlendAttachmentState, AttachmentBlend, ColorComponents};
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
@@ -38,7 +40,7 @@ use vulkano::memory::allocator::{
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineShaderStageCreateInfo, PipelineLayout, DynamicState};
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineShaderStageCreateInfo, PipelineLayout, DynamicState};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::shader::EntryPoint;
 use vulkano::swapchain::{
@@ -101,8 +103,8 @@ pub struct Vk {
     general_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
 
     // -----
-    entities_uniform_buffer: Subbuffer<[EntitiesData]>,
-    entities_staging_uniform_buffer: Subbuffer<[EntitiesData]>,
+    entities_uniform_buffer: Subbuffer<[EntityData]>,
+    entities_staging_uniform_buffer: Subbuffer<[EntityData]>,
     entities_uniform_copy_command_buffer: Arc<PrimaryAutoCommandBuffer>,
     entities_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
 
@@ -149,40 +151,41 @@ mod vs {
             #version 460
 
             struct uGeneralData {
-                mat3 view_matrix;
+                mat4 projection_matrix;
+                mat4 view_matrix;
                 vec2 resolution;
                 float time;
             };
 
-            struct uEntitiesData {
-                mat3 model_matrix;
+            struct uEntityData {
+                mat4 model_matrix;
             };
             
             layout(set = 0, binding = 0) buffer GeneralData {
                 uGeneralData data;
             } general_buf;
             
-            layout(set = 0, binding = 1) buffer EntitiesData {
-                uEntitiesData data[];
+            layout(set = 0, binding = 1) buffer EntityData {
+                uEntityData data[];
             } entities_buf;
 
-            layout(location = 0) in vec2 position;
-            layout(location = 1) in uint entity_id;
+            layout(location = 0) in uint entity_id;
+            layout(location = 1) in vec3 position;
+            layout(location = 2) in vec4 color;
+
+            layout(location = 0) out vec4 out_color;
 
             void main() {
-                vec2 uv = position;
+                vec4 uv = vec4(position, 1.0) * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
+
                 if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
                     uv.x *= general_buf.data.resolution.y/general_buf.data.resolution.x;
                 } else {
                     uv.y *= general_buf.data.resolution.x/general_buf.data.resolution.y;
                 }
-                // float angle = 3.14;
-                // mat3 matrix = mat3(
-                //     2.0*cos(angle), -sin(angle), 0.5,
-                //     sin(angle), 2.0*cos(angle), -0.0,
-                //     0.0, 0.0, 1.0
-                // );
-                gl_Position = vec4(vec3(uv, 1.0) * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix, 1.0);
+
+                out_color = color;
+                gl_Position = uv;
             }
         ",
     }
@@ -196,8 +199,10 @@ mod fs {
 
             layout(location = 0) out vec4 f_color;
 
+            layout(location = 0) in vec4 in_color;
+
             void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                f_color = in_color;
             }
         ",
     }
@@ -216,7 +221,7 @@ mod fs {
 //                 mat3 model_matrix;
 //             };
 // 
-//             layout(set = 0, binding = 0) buffer EntitiesData {
+//             layout(set = 0, binding = 0) buffer EntityData {
 //                 uData data[];
 //             } buf;
 // 
@@ -388,6 +393,7 @@ impl Vera {
 
         // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
         // ------------------------------------------------------------------------------
+        let num_entities = elements.len();
         let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
@@ -399,7 +405,7 @@ impl Vera {
 
         // Uniform data for the *uniform* sections
         let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size().into());
-        let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new() ; num_entities];
         let entities_uniform_data_len = entities_uniform_data.len() as u64;
 
         let staging_vertex_buffer: Subbuffer<[Veratex]> = Buffer::from_iter(
@@ -537,7 +543,7 @@ impl Vera {
         )
         .expect("failed to create staging_uniform_buffer");
 
-        let entities_uniform_buffer = Buffer::new_slice::<EntitiesData>(
+        let entities_uniform_buffer = Buffer::new_slice::<EntityData>(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
@@ -640,18 +646,8 @@ impl Vera {
     let drawing_vs = vs::load(device.clone()).unwrap().entry_point("main").expect("failed to create vertex shader module");
     let drawing_fs = fs::load(device.clone()).unwrap().entry_point("main").expect("failed to create fragment shader module");
 
-        
 
-    // Before we draw, we have to create what is called a **pipeline**. A pipeline describes how
-    // a GPU operation is to be performed. It is similar to an OpenGL program, but it also contains
-    // many settings for customization, all baked into a single object. For drawing, we create
-    // a **graphics** pipeline, but there are also other types of pipeline.
     let drawing_pipeline: Arc<GraphicsPipeline> = {
-        // First, we load the shaders that the pipeline will use:
-        // the vertex shader and the fragment shader.
-        //
-        // A Vulkan shader can in theory contain multiple entry points, so we have to specify which
-        // one.
         let vs = vs::load(device.clone())
             .unwrap()
             .entry_point("main")
@@ -660,45 +656,25 @@ impl Vera {
             .unwrap()
             .entry_point("main")
             .unwrap();
-
-        // Automatically generate a vertex input state from the vertex shader's input interface,
-        // that takes a single vertex buffer containing `Vertex` structs.
         let vertex_input_state = Veratex::per_vertex()
             .definition(&vs.info().input_interface)
             .unwrap();
 
-        // Make a list of the shader stages that the pipeline will have.
         let stages = [
             PipelineShaderStageCreateInfo::new(vs),
             PipelineShaderStageCreateInfo::new(fs),
         ];
 
-        // We must now create a **pipeline layout** object, which describes the locations and types of
-        // descriptor sets and push constants used by the shaders in the pipeline.
-        //
-        // Multiple pipelines can share a common layout object, which is more efficient.
-        // The shaders in a pipeline must use a subset of the resources described in its pipeline
-        // layout, but the pipeline layout is allowed to contain resources that are not present in the
-        // shaders; they can be used by shaders in other pipelines that share the same layout.
-        // Thus, it is a good idea to design shaders so that many pipelines have common resource
-        // locations, which allows them to share pipeline layouts.
         let pipeline_layout = PipelineLayout::new(
             device.clone(),
-            // Since we only have one pipeline in this example, and thus one pipeline layout,
-            // we automatically generate the creation info for it from the resources used in the
-            // shaders. In a real application, you would specify this information manually so that you
-            // can re-use one layout in multiple pipelines.
             PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
                 .into_pipeline_layout_create_info(device.clone())
                 .unwrap(),
         )
         .unwrap();
 
-        // We have to indicate which subpass of which render pass this pipeline is going to be used
-        // in. The pipeline will only be usable from this particular subpass.
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
-        // Finally, create the pipeline.
         GraphicsPipeline::new(
             device.clone(),
             None,
@@ -722,12 +698,11 @@ impl Vera {
                 // The default value overwrites the old value with the new one, without any blending.
                 color_blend_state: Some(ColorBlendState::with_attachment_states(
                     subpass.num_color_attachments(),
-                    ColorBlendAttachmentState::default(),
+                    ColorBlendAttachmentState {
+                        blend: Some(AttachmentBlend::alpha()),
+                        ..Default::default()
+                    },
                 )),
-                // Dynamic states allows us to specify parts of the pipeline settings when
-                // recording the command buffer, before we perform drawing.
-                // Here, we specify that the viewport should be dynamic.
-                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
                 subpass: Some(subpass.into()),
                 ..GraphicsPipelineCreateInfo::layout(pipeline_layout)
             },
@@ -904,7 +879,9 @@ impl Vera {
 
     /// Resets vertex and uniform data with `elements`
     pub fn reset(&mut self, elements: Vec<Shape>) {
+        elements.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
         // keep ___data in Vk { .. }
+        let num_entities = elements.len();
         let vertex_data: Vec<Veratex> = elements
             .into_iter()
             .enumerate()
@@ -913,7 +890,7 @@ impl Vera {
             )
             .collect::<Vec<Veratex>>();
         self.vk.general_uniform_data = GeneralData::from_resolution(self.vk.window.inner_size().into());
-        let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new() ; num_entities];
         
         for (o, i) in self.vk.staging_vertex_buffer.write().unwrap().iter_mut().zip(vertex_data) {
             unsafe { std::ptr::write(o, i) };
@@ -957,7 +934,7 @@ impl Vera {
 // 
         // // Uniform data for the *uniform* sections
         // let general_uniform_data: GeneralData = GeneralData::from_resolution(self.vk.window.inner_size().into());
-        // let entities_uniform_data: Vec<EntitiesData> = vec![EntitiesData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
+        // let entities_uniform_data: Vec<EntityData> = vec![EntityData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
         // let entities_uniform_data_len = entities_uniform_data.len() as u64;
 // 
         // self.vk.staging_vertex_buffer = Buffer::from_iter(
@@ -1091,7 +1068,7 @@ impl Vera {
         // )
         // .expect("failed to create staging_uniform_buffer");
 // 
-        // self.vk.entities_uniform_buffer = Buffer::new_slice::<EntitiesData>(
+        // self.vk.entities_uniform_buffer = Buffer::new_slice::<EntityData>(
         //     self.vk.memory_allocator.clone(),
         //     BufferCreateInfo {
         //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
@@ -1432,7 +1409,10 @@ impl Vk {
                         multisample_state: Some(MultisampleState::default()),
                         color_blend_state: Some(ColorBlendState::with_attachment_states(
                             subpass.num_color_attachments(),
-                            ColorBlendAttachmentState::default(),
+                            ColorBlendAttachmentState {
+                                blend: Some(AttachmentBlend::alpha()),
+                                ..Default::default()
+                            },
                         )),
                         subpass: Some(subpass.into()),
                         ..GraphicsPipelineCreateInfo::layout(layout)
@@ -1478,7 +1458,7 @@ impl Vk {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
+                    clear_values: vec![Some([0.0, 0.0, 0.0, 0.4].into())], // custom evolving background color
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
                 },
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },

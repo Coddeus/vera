@@ -1,85 +1,25 @@
-/// A vertex with:
-/// - a 2D position
-/// - the id of the entity it belongs to
-/// - (A Vec of transformations)
-pub struct Vertex {
-    pub position: [f32 ; 2],
-    pub entity_id: u32,
-}
-impl Vertex {
-    /// A new Vertex with (x, y) 2D coordinates.
-    fn new(x: f32, y: f32) -> Self {
-        Vertex { position: [x, y], ..Default::default() }
-    }
-}
-impl Default for Vertex {
-    fn default() -> Vertex {
-        Vertex {
-            position: [-0.5, 0.5],
-            entity_id: 0,
-        }
-    }
-}
+//! Crate root.
+//!
+//! Contains modifyable global variables (inside unsafe blocks) to choose Default behaviours. These variables start with `D_`.
+//!
+//! Everything further in this crate is reexported to this level.
+//!
+//! ## Don't
+//! DO NOT modify/read these global variables simutaneously on different threads.  
+//! Most likely, don't bother creating several threads at all. The vera core crate will do the performance job.
+//! In case you really want multithreading: some function modify/read these variables, but aren't `unsafe` to simplify scripting. Check the docs of the functions you use to know which ones you should be careful with.
 
-/// Any shape.  
-/// 1 shape = 1 entity.  
-/// This is what `fn new()` of specific shapes return.  
-/// - `vertices` are the vertices of the shape, each group of three `Veratex` forming a triangle.
-pub struct Shape {
-    pub vertices: Vec<Vertex>,
-}
-impl Shape {
-    /// Merges several shapes into one single entity, with empty transformations.
-    pub fn from_merge(shapes: Vec<Shape>) -> Self {
-        Self { 
-            vertices: shapes
-                .into_iter()
-                .flat_map(move |shape| shape.vertices.into_iter())
-                .collect(),
-            ..Default::default()
-        }
-    }
-    /// Creates a single entity from the given vertices, with empty transformations.
-    pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
-        Self { 
-            vertices,
-            ..Default::default()
-        }
-    }
-}
-impl Default for Shape {
-    fn default() -> Shape {
-        Shape { 
-            vertices: vec![
-                Vertex::new(1.0, 0.5),
-                Vertex::new(1.0, 1.0),
-                Vertex::new(0.5, 1.0),
-            ]
-        }
-    }
-}
+/// Default behaviour: which position to give vertices.
+pub static mut D_VERTEX_POSITION: [f32; 3] = [0.0, 0.0, 0.0];
+/// Default behaviour: which color to give vertices.
+pub static mut D_VERTEX_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
+/// Default behaviour: What transparency value.
+pub static mut D_VERTEX_ALPHA: f32 = 0.8;
+/// Default behaviour: whether or not to choose random colors for each vertex.
+/// Overrides `D_VERTEX_COLOR`, but not `D_VERTEX_ALPHA`.
+pub static mut D_RANDOM_VERTEX_COLOR: bool = true;
 
-/// A triangle shape
-pub struct Triangle;
-
-impl Triangle {
-    pub fn new(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) -> Shape {
-        Shape::from_vertices(vec![
-            Vertex::new(x1, y1),
-            Vertex::new(x2, y2),
-            Vertex::new(x3, y3),
-        ])
-    }
-}
-
-/// A rectangle shape
-pub struct Rectangle;
-
-impl Rectangle {
-    pub fn new(width: f32, height: f32) -> Shape {
-        Shape::from_merge(vec![
-            Triangle::new(-width/2., -height/2., width/2., -height/2., -width/2., height/2.),
-            Triangle::new(width/2., height/2., width/2., -height/2., -width/2., height/2.),
-        ])
-    }
-}
+mod vertex;
+pub use vertex::*;
+mod shape;
+pub use shape::*;
