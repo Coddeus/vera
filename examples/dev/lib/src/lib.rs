@@ -1,10 +1,13 @@
-use vera_shapes::{Shape, Triangle, Vertex};
+use vera_shapes::{Shape, Triangle, Vertex, D_RANDOM_VERTEX_COLOR, D_VERTEX_POSITION, D_VERTEX_COLOR, D_VERTEX_ALPHA};
 
 #[no_mangle]
 pub fn get() -> Vec<Shape> {
-    // unsafe {
-    //     vera_shapes::D_RANDOM_COLORS = true;
-    // }
+    unsafe {
+        D_RANDOM_VERTEX_COLOR = false;
+        D_VERTEX_POSITION = [0.0, 0.0, 0.0];
+        D_VERTEX_COLOR = [1.0, 1.0, 1.0];
+        D_VERTEX_ALPHA = 1.0;
+    }
 
     let t1 = Triangle::new(
         Vertex::new().pos(0.0, 0.5, 0.0),

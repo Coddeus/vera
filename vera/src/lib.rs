@@ -879,7 +879,7 @@ impl Vera {
 
     /// Resets vertex and uniform data with `elements`
     pub fn reset(&mut self, elements: Vec<Shape>) {
-        elements.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
+        // elements.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
         // keep ___data in Vk { .. }
         let num_entities = elements.len();
         let vertex_data: Vec<Veratex> = elements

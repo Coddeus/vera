@@ -2,6 +2,7 @@
 members = [
     "vera",
     "vera-shapes",
+    "examples/shapes/*",
 ]
 resolver = "2"
 
