@@ -28,24 +28,29 @@ pub static mut D_VERTEX_ALPHA: f32 = 0.8;
 /// Default view matrix
 pub static mut VIEW: f32 = 0.8;
 
+/// A vertex, belonging to a model
 mod vertex;
 pub use vertex::*;
+/// A model, something that is drawn
 mod model;
 pub use model::*;
+/// A view, representation of a camera
 mod view;
 pub use view::*;
+/// A projection, defined the viewing frustrum.
 mod projection;
 pub use projection::*;
+/// Transformations for vertices/models, views and projections.
 mod transform;
 pub use transform::*;
 
 /// The input of the Vera core. This is what you send when calling functions like `create()` or `reset()`.
 /// It contains everything that will be drawn and updated.
 pub struct Input {
-    /// All models
+    /// All models, with their transformations
     pub m: Vec<Model>,
-    /// The view
+    /// The view, with its transformations
     pub v: View,
-    /// The projection
+    /// The projection, with its transformations
     pub p: Projection,
 }

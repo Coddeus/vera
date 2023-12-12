@@ -113,6 +113,8 @@ impl Vertex {
         self.color[3] = alpha;
     }
 
+    // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
     /// Adds a new transformation with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
