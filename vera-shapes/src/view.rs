@@ -1,22 +1,20 @@
-use crate::{Tf, D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME, Evolution, Transformation};
+use crate::{
+    Evolution, ViewTransformation, ViewT,
+    D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME
+};
 
-
-
-/// A view (a view represents the view of ).
-/// 1 model = 1 entity.  
-/// This is what `fn new()` of specific models return.  
-/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle.
-/// - `t` are the runtime transformations of the model.
+/// A view (a view represents the position, direction and angle of a camera).
+/// - `t` are the runtime transformations of the view.
 pub struct View {
-    pub t: Vec<Tf>,
+    pub t: Vec<ViewT>,
 }
 
 impl View {
     /// Adds a new transformation with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
-    pub fn transform(mut self, transformation: Transformation) -> Self {
-        self.t.push(Tf {
+    pub fn transform(mut self, transformation: ViewTransformation) -> Self {
+        self.t.push(ViewT {
             t: transformation,
             e: unsafe { D_TRANSFORMATION_SPEED_EVOLUTION },
             start: unsafe { D_TRANSFORMATION_START_TIME },

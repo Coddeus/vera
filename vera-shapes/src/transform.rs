@@ -1,8 +1,17 @@
+/// The speed evolution of a transformation.
+#[derive(Copy, Clone)]
+pub enum Evolution {
+    /// Constant speed from start to end.
+    Linear,
+}
+
+// -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 /// Data for the transformation of a single vertex or shape.
 /// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
-pub struct Tf {
+pub struct ModelT {
     /// The type & value of the transformation.
-    pub t: Transformation,
+    pub t: ModelTransformation,
     /// The speed evolution of the transformation.
     pub e: Evolution,
     /// The start time of the transformation.
@@ -11,8 +20,9 @@ pub struct Tf {
     pub end: f32,
 }
 
-/// The available transformations, used for vertices and shapes.
-pub enum Transformation {
+/// The available model transformations, used for Vertex and Model.
+pub enum ModelTransformation {
+    
     /// A scale operation with the provided X, Y and Z scaling.
     Scale(f32, f32, f32),
     /// A translate operation with the provided X, Y and Z scaling.
@@ -25,9 +35,42 @@ pub enum Transformation {
     RotateZ(f32),
 }
 
-/// The speed evolution of per-vertex & per-shape transformations.
-#[derive(Copy, Clone)]
-pub enum Evolution {
-    /// Constant speed from start to end.
-    Linear,
+// -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/// Data for the transformation of the scene view.
+/// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
+pub struct ViewT {
+    /// The type & value of the transformation.
+    pub t: ViewTransformation,
+    /// The speed evolution of the transformation.
+    pub e: Evolution,
+    /// The start time of the transformation.
+    pub start: f32,
+    /// The duration of the transformation.
+    pub end: f32,
+}
+
+/// The available view transformations.
+pub enum ViewTransformation {
+    
+}
+
+// -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/// Data for the transformation of the scene projection.
+/// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
+pub struct ProjectionT {
+    /// The type & value of the transformation.
+    pub t: ProjectionTransformation,
+    /// The speed evolution of the transformation.
+    pub e: Evolution,
+    /// The start time of the transformation.
+    pub start: f32,
+    /// The duration of the transformation.
+    pub end: f32,
+}
+
+/// The available projection transformations.
+pub enum ProjectionTransformation {
+
 }

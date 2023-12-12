@@ -3,7 +3,10 @@
 
 use fastrand::f32;
 
-use crate::{Transformation, Tf, D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME, Evolution};
+use crate::{
+    Evolution, ModelTransformation, ModelT,
+    D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME
+};
 
 /// A vertex with:
 /// - its id. Changing it manually has no effect;
@@ -25,7 +28,7 @@ pub struct Vertex {
     pub color: [f32; 4],
 
     // Treated in CPU
-    pub t: Vec<Tf>
+    pub t: Vec<ModelT>
 }
 impl Vertex {
     /// A new default Vertex. Call this method to initialize a vertex, before transforming it.
@@ -113,8 +116,8 @@ impl Vertex {
     /// Adds a new transformation with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
-    pub fn transform(mut self, transformation: Transformation) -> Self {
-        self.t.push(Tf {
+    pub fn transform(mut self, transformation: ModelTransformation) -> Self {
+        self.t.push(ModelT {
             t: transformation,
             e: unsafe { D_TRANSFORMATION_SPEED_EVOLUTION },
             start: unsafe { D_TRANSFORMATION_START_TIME },

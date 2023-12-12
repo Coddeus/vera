@@ -39,9 +39,13 @@ pub use projection::*;
 mod transform;
 pub use transform::*;
 
-
+/// The input of the Vera core. This is what you send when calling functions like `create()` or `reset()`.
+/// It contains everything that will be drawn and updated.
 pub struct Input {
-    m: Vec<Model>,
-    v: View,
-    p: Projection,
+    /// All models
+    pub m: Vec<Model>,
+    /// The view
+    pub v: View,
+    /// The projection
+    pub p: Projection,
 }
