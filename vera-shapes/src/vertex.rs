@@ -1,5 +1,7 @@
 use fastrand::f32;
 
+use crate::Transformation;
+
 /// A vertex with:
 /// - the id of the entity it belongs to. Changing it manually has no effect;
 /// - a 3D XYZ position;
@@ -8,9 +10,13 @@ use fastrand::f32;
 ///
 /// Vertices enable building Triangles, which enable building all other shapes.
 pub struct Vertex {
+    // Sent to GPU
     pub entity_id: u32,
     pub position: [f32; 3],
     pub color: [f32; 4],
+
+    // Treated in CPU
+    pub t: Vec<Transformation>
 }
 impl Vertex {
     /// A new default Vertex. Call this method to initialize a vertex, before transforming it.
@@ -34,6 +40,7 @@ impl Vertex {
                         super::D_VERTEX_ALPHA,
                     ]
                 },
+                t: vec![],
             }
         }
     }

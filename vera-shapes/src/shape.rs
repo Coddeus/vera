@@ -1,11 +1,13 @@
-use crate::Vertex;
+use crate::{Vertex, Transformation};
 
 /// Any shape.  
 /// 1 shape = 1 entity.  
 /// This is what `fn new()` of specific shapes return.  
-/// - `vertices` are the vertices of the shape, each group of three `Veratex` forming a triangle.
+/// - `vertices` are the vertices of the shape, each group of three `Vertex` forming a triangle.
+/// - `t` are the runtime transformations of the shape.
 pub struct Shape {
     pub vertices: Vec<Vertex>,
+    pub t: Vec<Transformation>
 }
 impl Shape {
     /// Merges several shapes into one single entity, with empty transformations.
@@ -15,6 +17,7 @@ impl Shape {
                 .into_iter()
                 .flat_map(move |shape| shape.vertices.into_iter())
                 .collect(),
+            t: vec![],
         }
     }
     /// Creates a single entity from the given vertices, with empty transformations.
@@ -22,6 +25,7 @@ impl Shape {
     pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
         Self { 
             vertices,
+            t: vec![],
         }
     }
     /// Sets the shape color
