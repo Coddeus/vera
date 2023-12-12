@@ -1,14 +1,12 @@
 use vera::*;
 
-#[hot_lib_reloader::hot_module(
-    dylib = "lib"
-)]
+#[hot_lib_reloader::hot_module(dylib = "lib")]
 mod hot_lib {
-    use vera_shapes::Shape;
+    use vera_shapes::Model;
     // Path form the project root
-    
+
     #[hot_function]
-    pub fn get() -> Vec<Shape> { }
+    pub fn get() -> Vec<Model> {}
 }
 
 fn main() {
@@ -16,11 +14,13 @@ fn main() {
 
     'dev: loop {
         match v.vk.show(&mut v.event_loop, (0, 0)) {
-            0 => { // Successfully finished
+            0 => {
+                // Successfully finished
                 // Reset input data
                 v.reset(hot_lib::get());
             }
-            1 => { // Window closed 
+            1 => {
+                // Window closed
                 println!("\nℹ Window closed. Exiting.");
                 break 'dev;
             }

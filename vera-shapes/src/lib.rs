@@ -14,16 +14,34 @@
 pub static mut D_RANDOM_VERTEX_COLOR: bool = true;
 /// Default behaviour: Transformation speed evolution.
 pub static mut D_TRANSFORMATION_SPEED_EVOLUTION: Evolution = Evolution::Linear;
+/// Default behaviour: Transformation start time.
+pub static mut D_TRANSFORMATION_START_TIME: f32 = 0.0;
+/// Default behaviour: Transformation end time.
+pub static mut D_TRANSFORMATION_END_TIME: f32 = 2.0;
 /// Default behaviour: which position to give vertices.
 pub static mut D_VERTEX_POSITION: [f32; 3] = [0.0, 0.0, 0.0];
 /// Default behaviour: which color to give vertices.
 pub static mut D_VERTEX_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
-/// Default behaviour: What transparency value.
+/// Default behaviour: What transparency value to give vertices.
 pub static mut D_VERTEX_ALPHA: f32 = 0.8;
+
+/// Default view matrix
+pub static mut VIEW: f32 = 0.8;
 
 mod vertex;
 pub use vertex::*;
-mod shape;
-pub use shape::*;
+mod model;
+pub use model::*;
+mod view;
+pub use view::*;
+mod projection;
+pub use projection::*;
 mod transform;
 pub use transform::*;
+
+
+pub struct Input {
+    m: Vec<Model>,
+    v: View,
+    p: Projection,
+}
