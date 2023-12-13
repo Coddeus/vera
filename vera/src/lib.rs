@@ -1,26 +1,29 @@
-// This crate is where Vulkan is set up (`Vera::create()`) and core actions are handled (`show()`, `save()`, etc.)
+//! This crate is where Vulkan is set up (`Vera::create()`) and core actions are handled (`show()`, `save()`, etc.)
 
 // pub mod elements;
 // pub use elements::*;
 
-// Buffers which will be sent to the GPU, and rely on the vulkano crate to be compiled
+/// Buffers which will be sent to the GPU, and rely on the vulkano crate to be compiled
 pub mod buffer_contents;
 pub use buffer_contents::*;
+/// Matrices, which interpret the input transformations from vera-shapes, on which transformations are applied, and which are sent in buffers.
+pub mod matrix;
+pub use matrix::*;
 
-use vera_shapes::Model;
+use vera_shapes::{Model, Input};
+
+use std::sync::Arc;
+use std::time::Instant;
 
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::pipeline::graphics::color_blend::{
-    AttachmentBlend, ColorBlendAttachmentState, ColorBlendState, ColorComponents,
+    AttachmentBlend, ColorBlendAttachmentState, ColorBlendState,
 };
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
-
-use std::sync::Arc;
-use std::time::Instant;
 
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
@@ -43,7 +46,7 @@ use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{
-    DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
+    GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     PipelineShaderStageCreateInfo,
 };
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
@@ -929,12 +932,15 @@ impl Vera {
         }
     }
 
-    /// Resets vertex and uniform data with `elements`
-    pub fn reset(&mut self, elements: Vec<Model>) {
-        // elements.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
+    /// Resets vertex and uniform data with `elements`.  
+    /// 
+    //? Useful for reducing the CPU/GPU usage when switching between totally different scenes or close-to-empty scenes.
+    /// Also useful if called from a loop for hot-reloading.
+    pub fn reset(&mut self, input: Input) {
+        // input.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
         // keep ___data in Vk { .. }
-        let num_entities = elements.len();
-        let vertex_data: Vec<Veratex> = elements
+        let num_entities = input.m.len();
+        let vertex_data: Vec<Veratex> = input.m
             .into_iter()
             .enumerate()
             .flat_map(|shape| {
@@ -944,6 +950,7 @@ impl Vera {
                 })
             })
             .collect::<Vec<Veratex>>();
+        
         self.vk.general_uniform_data =
             GeneralData::from_resolution(self.vk.window.inner_size().into());
         let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); num_entities];

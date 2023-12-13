@@ -3,8 +3,6 @@ use crate::{
     D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME
 };
 
-
-
 /// A projection (a projection defines the frustrum inside which objects are seen).
 /// - `t` are the runtime transformations of the projection.
 pub struct Projection {

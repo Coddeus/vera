@@ -52,7 +52,11 @@ pub struct ViewT {
 
 /// The available view transformations.
 pub enum ViewTransformation {
-    
+    Lookat(f32, f32, f32, f32, f32, f32, f32, f32, f32),
+    Move(f32, f32, f32),
+    Pitch(f32),
+    Yaw(f32),
+    Roll(f32),
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -72,5 +76,6 @@ pub struct ProjectionT {
 
 /// The available projection transformations.
 pub enum ProjectionTransformation {
-
+    Orthographic(f32, f32, f32, f32, f32, f32),
+    Perspective(f32, f32, f32, f32, f32, f32),
 }
