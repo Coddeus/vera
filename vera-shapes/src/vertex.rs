@@ -4,7 +4,7 @@
 use fastrand::f32;
 
 use crate::{
-    Evolution, ModelTransformation, ModelT,
+    Evolution, Transformation, Tf,
     D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME
 };
 
@@ -18,17 +18,13 @@ use crate::{
 /// Vertices enable building Triangles, which enable building all other shapes.
 pub struct Vertex {
     // Sent to GPU
-    /// A unique identifier for this vertex.
-    pub vertex_id: u32,
-    /// An identifier for the shape this vertex belongs to.
-    pub entity_id: u32,
     /// The position of the vertex.
     pub position: [f32; 3],
     /// The color of the vertex, in RGBA format.
     pub color: [f32; 4],
 
     // Treated in CPU
-    pub t: Vec<ModelT>
+    pub t: Vec<Tf>
 }
 impl Vertex {
     /// A new default Vertex. Call this method to initialize a vertex, before transforming it.
@@ -38,8 +34,6 @@ impl Vertex {
     pub fn new() -> Self {
         unsafe {
             Self {
-                vertex_id: 0,
-                entity_id: 0,
                 position: super::D_VERTEX_POSITION,
                 color: if super::D_RANDOM_VERTEX_COLOR {
                     [f32(), f32(), f32(), super::D_VERTEX_ALPHA]
@@ -118,8 +112,8 @@ impl Vertex {
     /// Adds a new transformation with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
-    pub fn transform(mut self, transformation: ModelTransformation) -> Self {
-        self.t.push(ModelT {
+    pub fn transform(mut self, transformation: Transformation) -> Self {
+        self.t.push(Tf {
             t: transformation,
             e: unsafe { D_TRANSFORMATION_SPEED_EVOLUTION },
             start: unsafe { D_TRANSFORMATION_START_TIME },
@@ -135,12 +129,14 @@ impl Vertex {
     }
 
     /// Modifies the start time of the latest transformation added.
+    /// A start after an end will result in the transformation being instantaneous at start.
     pub fn start(mut self, start: f32) -> Self {
         self.t.last_mut().unwrap().start = start;
         self
     }
 
     /// Modifies the end time of the latest transformation added.
+    /// An end before a start will result in the transformation being instantaneous at start.
     pub fn end(mut self, end: f32) -> Self {
         self.t.last_mut().unwrap().end = end;
         self
