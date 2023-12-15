@@ -113,18 +113,18 @@ pub struct Vk {
     vertex_copy_fence:
         Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
     
-    transform_vertex_data: Vec<VertexTransformData>,
+    transform_vertex_data: Vec<TransformVertexData>,
     transform_vertex_transformer: Vec<Transformer>,
 
-    transform_vertex_buffer: Subbuffer<[VertexTransformData]>,
-    staging_transform_vertex_buffer: Subbuffer<[VertexTransformData]>,
+    transform_vertex_buffer: Subbuffer<[TransformVertexData]>,
+    staging_transform_vertex_buffer: Subbuffer<[TransformVertexData]>,
     transform_vertex_copy_command_buffer: Arc<PrimaryAutoCommandBuffer>,
     transform_vertex_copy_fence:
         Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>>,
 
     // -----
     general_uniform_data: GeneralData,
-    general_uniform_transformer: Transformer,
+    general_uniform_transformer: (Transformer, Transformer),
     
     general_uniform_buffer: Subbuffer<GeneralData>,
     general_staging_uniform_buffer: Subbuffer<GeneralData>,
@@ -135,7 +135,7 @@ pub struct Vk {
     // -----
     entities_uniform_data: Vec<EntityData>,
     entities_uniform_len: u64,
-    entities_uniform_transformer: Transformer,
+    entities_uniform_transformer: Vec<Transformer>,
 
     entities_uniform_buffer: Subbuffer<[EntityData]>,
     entities_staging_uniform_buffer: Subbuffer<[EntityData]>,
@@ -207,6 +207,7 @@ mod vs {
             layout(location = 0) in uint entity_id;
             layout(location = 1) in vec3 position;
             layout(location = 2) in vec4 color;
+            layout(location = 3) in vec4 transform;
 
             layout(location = 0) out vec4 out_color;
 
@@ -440,7 +441,10 @@ impl Vera {
         // ---------------------------------------
         let entities_uniform_len = input.m.len() as u64;
         let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); entities_uniform_len as usize];
-        let entities_uniform_transformer: Vec<Transformer> = vec![Transformer::empty(); entities_uniform_len as usize];
+        let entities_uniform_transformer: Vec<Transformer> = input.m
+            .iter()
+            .map(|model: &vera_shapes::Model| Transformer::from_t(model.t))
+            .collect::<Vec<Transformer>>();
 
         let vertex_len = input.m.len() as u64;
         let vertex_data: Vec<VertexData> = input.m
@@ -453,14 +457,16 @@ impl Vera {
             })
             .collect::<Vec<VertexData>>();
 
-        let transform_vertex_data: Vec<VertexTransformData> = vec![VertexTransformData::new(); vertex_len as usize];
+        let transform_vertex_data: Vec<TransformVertexData> = vec![TransformVertexData::new(); vertex_len as usize];
         let transform_vertex_transformer: Vec<Transformer> = input.m
             .iter()
-            .map(|model: &vera_shapes::Model| Transformer::from_t(model.t))
+            .flat_map(|model: &vera_shapes::Model| model.vertices.into_iter().map(|vertex| {
+                Transformer::from_t(vertex.t)
+            }))
             .collect::<Vec<Transformer>>();
         
         let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size().into());
-        let general_uniform_transformer: (Transformer, Transformer) = (Transformer::empty(), Transformer::empty());         // (View, Projection)
+        let general_uniform_transformer: (Transformer, Transformer) = (Transformer::from_t(input.v.t), Transformer::from_t(input.p.t)); // (View, Projection)
 
         // ---------------------------------------
 
@@ -532,7 +538,7 @@ impl Vera {
 // -----------------------------------------
 
 
-        let staging_transform_vertex_buffer: Subbuffer<[VertexData]> = Buffer::from_iter(
+        let staging_transform_vertex_buffer: Subbuffer<[TransformVertexData]> = Buffer::from_iter(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::TRANSFER_SRC,
@@ -547,7 +553,7 @@ impl Vera {
         )
         .expect("failed to create staging_transform_vertex_buffer");
 
-        let transform_vertex_buffer: Subbuffer<[VertexData]> = Buffer::new_slice::<VertexData>(
+        let transform_vertex_buffer: Subbuffer<[TransformVertexData]> = Buffer::new_slice::<TransformVertexData>(
             memory_allocator.clone(),
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER
@@ -792,21 +798,13 @@ impl Vera {
             .expect("failed to create fragment shader module");
 
         let drawing_pipeline: Arc<GraphicsPipeline> = {
-            let vs = vs::load(device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let fs = fs::load(device.clone())
-                .unwrap()
-                .entry_point("main")
-                .unwrap();
-            let vertex_input_state = VertexData::per_vertex()
-                .definition(&vs.info().input_interface)
+            let vertex_input_state = [VertexData::per_vertex(), TransformVertexData::per_vertex()]
+                .definition(&drawing_vs.info().input_interface)
                 .unwrap();
 
             let stages = [
-                PipelineShaderStageCreateInfo::new(vs),
-                PipelineShaderStageCreateInfo::new(fs),
+                PipelineShaderStageCreateInfo::new(drawing_vs.clone()),
+                PipelineShaderStageCreateInfo::new(drawing_fs.clone()),
             ];
 
             let pipeline_layout = PipelineLayout::new(
@@ -1010,13 +1008,18 @@ impl Vera {
 
                 // -----
                 vertex_data,
-                vertex_transform,
+                transform_vertex_transformer,
                 vertex_len,
                 general_uniform_data,
-                general_uniform_transform,
+                general_uniform_transformer,
                 entities_uniform_data,
-                entities_uniform_transform,
+                entities_uniform_transformer,
                 entities_uniform_len,
+                transform_vertex_data,
+                transform_vertex_buffer,
+                staging_transform_vertex_buffer,
+                transform_vertex_copy_command_buffer,
+                transform_vertex_copy_fence,
             },
         }
     }
@@ -1028,21 +1031,21 @@ impl Vera {
     pub fn reset(&mut self, input: Input) {
         // input.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
         // keep ___data in Vk { .. }
-        let num_entities = input.m.len();
-        let vertex_data: Vec<VertexData> = input.m
-            .into_iter()
+
+        self.vk.vertex_len = input.m.len() as u64;
+        self.vk.vertex_data = input.m
+            .iter()
             .enumerate()
-            .flat_map(|shape| {
-                shape.1.vertices.into_iter().map(move |mut vertex| {
-                    vertex.entity_id = shape.0 as u32;
-                    vertex.into()
+            .flat_map(|model: (usize, &vera_shapes::Model)| {
+                model.1.vertices.into_iter().map(move |mut vertex| {
+                    VertexData::from_v(vertex, model.0 as u32)
                 })
             })
             .collect::<Vec<VertexData>>();
         
         self.vk.general_uniform_data =
             GeneralData::from_resolution(self.vk.window.inner_size().into());
-        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); num_entities];
+        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); self.vk.vertex_len as usize];
 
         for (o, i) in self
             .vk
@@ -1050,7 +1053,7 @@ impl Vera {
             .write()
             .unwrap()
             .iter_mut()
-            .zip(vertex_data)
+            .zip(self.vk.vertex_data)
         {
             unsafe { std::ptr::write(o, i) };
         }
@@ -1072,6 +1075,7 @@ impl Vera {
         }
         
         self.vk.copy_vertex_buffer();
+        self.vk.copy_transform_vertex_buffer();
         self.vk.copy_general_uniform_buffer();
         self.vk.copy_entities_uniform_buffer();
 
@@ -1441,28 +1445,41 @@ impl Vera {
 }
 
 impl Vk {
+    /// Resets all content to `input`.
     fn source(&mut self, input: Input) {
         self.entities_uniform_len = input.m.len() as u64;
+        self.entities_uniform_data = vec![EntityData::new(); self.entities_uniform_len as usize];
+        self.entities_uniform_transformer = input.m
+            .iter()
+            .map(|model: &vera_shapes::Model| Transformer::from_t(model.t))
+            .collect::<Vec<Transformer>>();
+        self.recreate_entities_uniform_buffer();
+
+        self.vertex_len = input.m.len() as u64;
         self.vertex_data = input.m
-            .into_iter()
+            .iter()
             .enumerate()
-            .flat_map(|shape| {
-                shape.1.vertices.into_iter().map(move |mut vertex| {
-                    vertex.entity_id = shape.0 as u32;
-                    vertex.into()
+            .flat_map(|model: (usize, &vera_shapes::Model)| {
+                model.1.vertices.into_iter().map(move |mut vertex| {
+                    VertexData::from_v(vertex, model.0 as u32)
                 })
             })
             .collect::<Vec<VertexData>>();
-        self.vertex_len = self.vertex_data.len() as u64;
         self.recreate_vertex_buffer();
 
-        self.general_uniform_data = GeneralData {
-            projection_matrix: input.p,
-        };
+        self.transform_vertex_data = vec![TransformVertexData::new(); self.vertex_len as usize];
+        self.transform_vertex_transformer = input.m
+            .iter()
+            .flat_map(|model: &vera_shapes::Model| model.vertices.into_iter().map(|vertex| {
+                Transformer::from_t(vertex.t)
+            }))
+            .collect::<Vec<Transformer>>();
+        self.recreate_transform_vertex_buffer();
+
+        self.general_uniform_data = GeneralData::from_resolution(self.window.inner_size().into());
+        self.general_uniform_transformer = (Transformer::from_t(input.v.t), Transformer::from_t(input.p.t)); // (View, Projection)
         self.recreate_general_uniform_buffer();
         
-        self.entities_uniform_data = vec![EntityData::new(); self.entities_uniform_len as usize];
-        self.recreate_entities_uniform_buffer();
     }
 
     // Buffer recreation
@@ -1509,6 +1526,54 @@ impl Vk {
             .copy_buffer(CopyBufferInfo::buffers(
                 self.staging_vertex_buffer.clone(),
                 self.vertex_buffer.clone(),
+            ))
+            .unwrap()
+            .build()
+            .unwrap();
+    }
+
+    fn recreate_transform_vertex_buffer(&mut self) {
+        self.staging_transform_vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            self.transform_vertex_data,
+        )
+        .expect("failed to create staging_vertex_buffer");
+
+        self.transform_vertex_buffer = Buffer::new_slice::<TransformVertexData>(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER
+                    | BufferUsage::TRANSFER_DST
+                    | BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                ..Default::default()
+            },
+            self.vertex_len,
+        )
+        .expect("failed to create vertex_buffer");
+
+        self.transform_vertex_copy_command_buffer = 
+            AutoCommandBufferBuilder::primary(
+                &self.command_buffer_allocator,
+                self.queue.queue_family_index(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .expect("failed to create copy_cbb")
+            .copy_buffer(CopyBufferInfo::buffers(
+                self.staging_transform_vertex_buffer.clone(),
+                self.transform_vertex_buffer.clone(),
             ))
             .unwrap()
             .build()
@@ -1590,7 +1655,7 @@ impl Vk {
                 memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
                 ..Default::default()
             },
-            self.entities_uniform_data_len,
+            self.entities_uniform_len,
         )
         .expect("failed to create uniform_buffer");
 
@@ -1610,10 +1675,56 @@ impl Vk {
             .unwrap();
     }
 
+    // Staging buffer update
+
+    // fn update_vertex_buffer(&mut self) {}
+
+    fn update_transform_vertex_buffer(&mut self) {
+        for (o, i) in self.staging_transform_vertex_buffer.write().unwrap().iter_mut()
+            .zip(self.transform_vertex_transformer.iter()) {
+                let mat = i.update(self.time).0;
+                ((*o).vertex_matrix0, (*o).vertex_matrix1, (*o).vertex_matrix2, (*o).vertex_matrix3) = (
+                    [mat[0], mat[1], mat[2], mat[3]],
+                    [mat[4], mat[5], mat[6], mat[7]],
+                    [mat[8], mat[9], mat[10], mat[11]],
+                    [mat[12], mat[13], mat[14], mat[15]],
+                );
+        }
+
+        self.copy_transform_vertex_buffer();
+    }
+
+    fn update_general_uniform_buffer(&mut self) {
+        self.general_staging_uniform_buffer.write().unwrap().view_matrix = self.general_uniform_transformer.0.update(self.time).0;
+        self.general_staging_uniform_buffer.write().unwrap().projection_matrix = self.general_uniform_transformer.1.update(self.time).0;
+        
+        self.copy_general_uniform_buffer();
+    }
+
+    fn update_entities_uniform_buffer(&mut self) {
+        for (o, i) in self.entities_staging_uniform_buffer.write().unwrap().iter_mut()
+            .zip(self.entities_uniform_transformer.iter()) {
+            (*o).model_matrix = i.update(self.time).0;
+        }
+
+        self.copy_entities_uniform_buffer();
+    }
+
     // Buffer copy
 
     fn copy_vertex_buffer(&mut self) {
         self.vertex_copy_command_buffer
+            .clone()
+            .execute(self.queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap()
+            .wait(None /* timeout */)
+            .unwrap();
+    }
+
+    fn copy_transform_vertex_buffer(&mut self) {
+        self.transform_vertex_copy_command_buffer
             .clone()
             .execute(self.queue.clone())
             .unwrap()
@@ -1643,20 +1754,6 @@ impl Vk {
             .unwrap()
             .wait(None /* timeout */)
             .unwrap();
-    }
-
-    // Buffer update
-
-    fn update_vertex_buffer(&mut self) {
-
-    }
-
-    fn update_general_uniform_buffer(&mut self) {
-        
-    }
-
-    fn update_entities_uniform_buffer(&mut self) {
-        
     }
 
     /// Draws a frame
@@ -1809,7 +1906,9 @@ impl Vk {
                 self.descriptor_set.clone(),
             )
             .unwrap()
-            .bind_vertex_buffers(0, [self.vertex_buffer.clone(), self.transform_vertex_buffer.clone()])
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap()
+            .bind_vertex_buffers(1, self.transform_vertex_buffer.clone())
             .unwrap()
             .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap()

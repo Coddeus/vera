@@ -88,7 +88,7 @@ impl GeneralData {
 #[repr(C)]
 pub(crate) struct EntityData {
     /// The model matrix
-    model_matrix: [f32 ; 16],
+    pub(crate) model_matrix: [f32 ; 16],
 }
 impl EntityData {
     /// Returns an identity matrix, applying no transformation.
@@ -105,22 +105,30 @@ impl EntityData {
 }
 
 /// Additional vertex data for one vertex
-#[derive(Debug, Clone, BufferContents)]
+#[derive(Debug, Clone, Vertex, BufferContents)]
 #[repr(C)]
-pub(crate) struct VertexTransformData {
-    /// The model matrix
-    vertex_matrix: [f32 ; 16],
+pub(crate) struct TransformVertexData {
+    /// The first vec4 of the vertex matrix
+    #[format(R32G32B32A32_SFLOAT)]
+    pub(crate) vertex_matrix0: [f32 ; 4],
+    /// The second vec4 of the vertex matrix
+    #[format(R32G32B32A32_SFLOAT)]
+    pub(crate) vertex_matrix1: [f32 ; 4],
+    /// The third vec4 of the vertex matrix
+    #[format(R32G32B32A32_SFLOAT)]
+    pub(crate) vertex_matrix2: [f32 ; 4],
+    /// The fourth vec4 of the vertex matrix
+    #[format(R32G32B32A32_SFLOAT)]
+    pub(crate) vertex_matrix3: [f32 ; 4],
 }
-impl VertexTransformData {
+impl TransformVertexData {
     /// Returns an identity matrix, applying no transformation.
     pub(crate) fn new() -> Self {
-        VertexTransformData { 
-            vertex_matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ],
+        TransformVertexData { 
+            vertex_matrix0: [1.0, 0.0, 0.0, 0.0],
+            vertex_matrix1: [0.0, 1.0, 0.0, 0.0],
+            vertex_matrix2: [0.0, 0.0, 1.0, 0.0],
+            vertex_matrix3: [0.0, 0.0, 0.0, 1.0],
         }
     }
 }

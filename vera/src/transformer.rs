@@ -2,7 +2,7 @@ use vera_shapes::{Transformation, Tf, Evolution};
 use crate::Mat4;
 
 /// Lighter enum for transformation types.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TransformType {
     Scale,
     Translate,
@@ -18,8 +18,8 @@ pub enum TransformType {
     Unimplemented,
 }
 
-impl From<Transformation> for TransformType {
-    fn from(value: Transformation) -> Self {
+impl From<&Transformation> for TransformType {
+    fn from(value: &Transformation) -> Self {
         match value {
             Transformation::Scale(_, _, _) => TransformType::Scale,
             Transformation::Translate(_, _, _) => TransformType::Translate,
@@ -56,8 +56,9 @@ impl From<Transformation> for Mat4 {
 }
 
 /// A transformation
+#[derive(Clone, Copy)]
 struct TransformMatrix {
-    /// The type of transformation. Used for update optimization.
+    /// The type of transformation. Stored for update optimization.
     pub ty: TransformType,
     /// The transformation matrix.
     pub mat: Mat4,
@@ -72,7 +73,7 @@ struct TransformMatrix {
 impl From<Tf> for TransformMatrix {
     fn from(value: Tf) -> Self {
         TransformMatrix {
-            ty: value.t.into(),
+            ty: (&value.t).into(),
             mat: value.t.into(),
             e: value.e,
             start: value.start,
@@ -104,6 +105,7 @@ impl Transformer {
         }
     }
 
+    /// Creates a transformer from a vector of transformations.
     pub(crate) fn from_t(transformations: Vec<Tf>) -> Self {
         Self {
             previous: Vec::with_capacity(transformations.len()),
@@ -120,6 +122,7 @@ impl Transformer {
     // The storing order cannot change, except if consecutive transformations have the same type.
     // Faster reset in a loop-like action ?
 
+    /// Updates the transformer, and returns the transformations matrix of the corresponding vertex for `time`.
     pub(crate) fn update(&mut self, time: f32) -> Mat4 {
         let mut first = true;
         let mut type_of_previous: Option<TransformType> = None;
@@ -158,7 +161,7 @@ impl Transformer {
     }
 }
 
-/// Returns the point of advancement of `time` on the `start` to `end` journey, with the `e` evolution function.
+/// Returns the *point of advancement* of `time` on the `start` to `end` journey, with the `e` evolution function.
 /// The returned value is between 0.0 and 1.0, where 0.0 is the start and 1.0 is the end.
 fn evolution(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
     if start>=end {
@@ -170,7 +173,7 @@ fn evolution(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
         Evolution::Linear => {
             (time-start)/(end-start)
         }
-        Unimplemented => {
+        Evolution::Unimplemented => {
             println!("Unknown evolution, defaulting to Linear");
             (time-start)/(end-start)
         }
