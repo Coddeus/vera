@@ -16,11 +16,11 @@ pub(crate) struct VertexData {
 }
 
 impl VertexData {
-    pub(crate) fn from_v(vertex: vera_shapes::Vertex, entity_id: u32) -> Self {
+    pub(crate) fn new(entity_id: u32, position: [f32; 3], color: [f32; 4]) -> Self {
         VertexData { 
             entity_id,
-            position: vertex.position, 
-            color: vertex.color, 
+            position, 
+            color, 
         }
     }
 }

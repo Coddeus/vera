@@ -13,7 +13,7 @@ pub use matrix::*;
 pub mod transformer;
 pub use transformer::*;
 
-use vera_shapes::Input;
+use vera_shapes::{Input, Model, Tf, Vertex as ModelVertex, View, Projection};
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -68,15 +68,15 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::window::{Window, WindowBuilder};
 
-/// The struct the user interacts with, and the one used for creation.
+/// The struct the user interacts with.
 pub struct Vera {
     event_loop: EventLoop<()>,
     vk: Vk,
 }
 
-/// The underlying struct which executes actions
+/// The underlying base with executes specific tasks.
 pub struct Vk {
-    // -----
+    // ----- Created on initialization
     library: Arc<vulkano::VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
     instance: Arc<Instance>,
@@ -94,15 +94,22 @@ pub struct Vk {
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
-    // -----
+    
     memory_allocator: Arc<GenericMemoryAllocator<FreeListAllocator>>,
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
 
-    // -----
+    
     max_uniform_buffer_size: u32,
     max_storage_buffer_size: u32,
 
+
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
+    recreate_swapchain: bool,
+    show_count: u32,
+    time: f32,
+
+    
     // -----
     vertex_data: Vec<VertexData>,
     vertex_len: u64,
@@ -172,11 +179,6 @@ pub struct Vk {
     previous_drawing_fence_i: u32,
 
     // -----
-    // window_resized: bool,
-    previous_frame_end: Option<Box<dyn GpuFuture>>,
-    recreate_swapchain: bool,
-    show_count: u32,
-    time: f32,
 }
 
 mod vs {
@@ -207,11 +209,15 @@ mod vs {
             layout(location = 0) in uint entity_id;
             layout(location = 1) in vec3 position;
             layout(location = 2) in vec4 color;
-            layout(location = 3) in vec4 transform;
+            layout(location = 3) in vec4 vertex_matrix0;
+            layout(location = 4) in vec4 vertex_matrix1;
+            layout(location = 5) in vec4 vertex_matrix2;
+            layout(location = 6) in vec4 vertex_matrix3;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
+                mat4 transform = mat4(vertex_matrix0, vertex_matrix1, vertex_matrix2, vertex_matrix3);
                 vec4 uv = vec4(position, 1.0) * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
 
                 if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
@@ -439,35 +445,8 @@ impl Vera {
 
         // Initial buffer data, len and transform.
         // ---------------------------------------
-        let entities_uniform_len = input.m.len() as u64;
-        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); entities_uniform_len as usize];
-        let entities_uniform_transformer: Vec<Transformer> = input.m
-            .iter()
-            .map(|model: &vera_shapes::Model| Transformer::from_t(model.t))
-            .collect::<Vec<Transformer>>();
 
-        let vertex_len = input.m.len() as u64;
-        let vertex_data: Vec<VertexData> = input.m
-            .iter()
-            .enumerate()
-            .flat_map(|model: (usize, &vera_shapes::Model)| {
-                model.1.vertices.into_iter().map(move |mut vertex| {
-                    VertexData::from_v(vertex, model.0 as u32)
-                })
-            })
-            .collect::<Vec<VertexData>>();
-
-        let transform_vertex_data: Vec<TransformVertexData> = vec![TransformVertexData::new(); vertex_len as usize];
-        let transform_vertex_transformer: Vec<Transformer> = input.m
-            .iter()
-            .flat_map(|model: &vera_shapes::Model| model.vertices.into_iter().map(|vertex| {
-                Transformer::from_t(vertex.t)
-            }))
-            .collect::<Vec<Transformer>>();
-        
-        let general_uniform_data: GeneralData = GeneralData::from_resolution(window.inner_size().into());
-        let general_uniform_transformer: (Transformer, Transformer) = (Transformer::from_t(input.v.t), Transformer::from_t(input.p.t)); // (View, Projection)
-
+        let ((general_uniform_data, general_uniform_transformer), (entities_uniform_len, entities_uniform_data, entities_uniform_transformer), (vertex_len, transform_vertex_data, transform_vertex_transformer), vertex_data) = from_input(input);
         // ---------------------------------------
 
         // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
@@ -1007,15 +986,15 @@ impl Vera {
                 time,
 
                 // -----
-                vertex_data,
+                vertex_data: vec![],
                 transform_vertex_transformer,
                 vertex_len,
                 general_uniform_data,
                 general_uniform_transformer,
-                entities_uniform_data,
+                entities_uniform_data: vec![],
                 entities_uniform_transformer,
                 entities_uniform_len,
-                transform_vertex_data,
+                transform_vertex_data: vec![],
                 transform_vertex_buffer,
                 staging_transform_vertex_buffer,
                 transform_vertex_copy_command_buffer,
@@ -1024,408 +1003,35 @@ impl Vera {
         }
     }
 
-    /// Resets vertex and uniform data with `elements`.  
+    /// Resets vertex and uniform data from input, which is consumed.
     /// 
-    //? Useful for reducing the CPU/GPU usage when switching between totally different scenes or close-to-empty scenes.
+    /// In heavy animations, resetting is useful for reducing the CPU/GPU usage if you split you animations in several parts.
     /// Also useful if called from a loop for hot-reloading.
     pub fn reset(&mut self, input: Input) {
-        // input.iter().for_each(|s| s.vertices.iter().for_each(|v| {println!("{:?}", v.color);}));
-        // keep ___data in Vk { .. }
-
-        self.vk.vertex_len = input.m.len() as u64;
-        self.vk.vertex_data = input.m
-            .iter()
-            .enumerate()
-            .flat_map(|model: (usize, &vera_shapes::Model)| {
-                model.1.vertices.into_iter().map(move |mut vertex| {
-                    VertexData::from_v(vertex, model.0 as u32)
-                })
-            })
-            .collect::<Vec<VertexData>>();
-        
-        self.vk.general_uniform_data =
-            GeneralData::from_resolution(self.vk.window.inner_size().into());
-        let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); self.vk.vertex_len as usize];
-
-        for (o, i) in self
-            .vk
-            .staging_vertex_buffer
-            .write()
-            .unwrap()
-            .iter_mut()
-            .zip(self.vk.vertex_data)
-        {
-            unsafe { std::ptr::write(o, i) };
-        }
-        unsafe {
-            std::ptr::write(
-                &mut *self.vk.general_staging_uniform_buffer.write().unwrap(),
-                self.vk.general_uniform_data.clone(),
-            )
-        };
-        for (o, i) in self
-            .vk
-            .entities_staging_uniform_buffer
-            .write()
-            .unwrap()
-            .iter_mut()
-            .zip(entities_uniform_data)
-        {
-            unsafe { std::ptr::write(o, i) };
-        }
-        
-        self.vk.copy_vertex_buffer();
-        self.vk.copy_transform_vertex_buffer();
-        self.vk.copy_general_uniform_buffer();
-        self.vk.copy_entities_uniform_buffer();
-
-        // let vertex_data: Vec<VertexData> = elements
-        //     .into_iter()
-        //     .enumerate()
-        //     .flat_map(|shape| shape.1.vertices.into_iter()
-        //         .map(move |mut vertex| {vertex.entity_id = shape.0 as u32; vertex.into()})
-        //     )
-        //     .collect::<Vec<VertexData>>();
-        // let vertex_data_len = vertex_data.len() as u64;
-        //
-        // // Uniform data for the *uniform* sections
-        // let general_uniform_data: GeneralData = GeneralData::from_resolution(self.vk.window.inner_size().into());
-        // let entities_uniform_data: Vec<EntityData> = vec![EntityData::empty() ; vertex_data.iter().map(|vertex| vertex.entity_id).max().unwrap() as usize + 1];
-        // let entities_uniform_data_len = entities_uniform_data.len() as u64;
-        //
-        // self.vk.staging_vertex_buffer = Buffer::from_iter(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         // Specify this buffer will be used as a transfer source.
-        //         usage: BufferUsage::TRANSFER_SRC,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         // Specify this buffer will be used for uploading to the GPU.
-        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-        //         ..Default::default()
-        //     },
-        //     vertex_data,
-        // )
-        // .expect("failed to create staging_vertex_buffer");
-        //
-        // self.vk.vertex_buffer = Buffer::new_slice::<VertexData>(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::STORAGE_BUFFER
-        //             | BufferUsage::TRANSFER_DST
-        //             | BufferUsage::VERTEX_BUFFER,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-        //         ..Default::default()
-        //     },
-        //     vertex_data_len,
-        // )
-        // .expect("failed to create vertex_buffer");
-        //
-        // // Not kept
-        // let mut vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> = AutoCommandBufferBuilder::primary(
-        //     &self.vk.command_buffer_allocator,
-        //     self.vk.queue.queue_family_index(),
-        //     CommandBufferUsage::MultipleSubmit,
-        // )
-        // .expect("failed to create vertex_cbb");
-        //
-        // vertex_cbb
-        //     .copy_buffer(CopyBufferInfo::buffers(
-        //         self.vk.staging_vertex_buffer.clone(),
-        //         self.vk.vertex_buffer.clone(),
-        //     ))
-        //     .unwrap();
-        //
-        // let vertex_copy_command_buffer: Arc<PrimaryAutoCommandBuffer> = vertex_cbb.build().unwrap();
-        //
-        // vertex_copy_command_buffer.clone()
-        //     .execute(self.vk.queue.clone())
-        //     .unwrap()
-        //     .then_signal_fence_and_flush()
-        //     .unwrap()
-        //     .wait(None /* timeout */)
-        //     .unwrap();
-        //
-        // // ------------------------------------------------------------------------------
-        //
-        // // Staging & Device-local uniform buffers for general data, and their copy command buffers
-        // // ---------------------------------------------------------------------------------------
-        // self.vk.general_staging_uniform_buffer = Buffer::from_data(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::TRANSFER_SRC,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-        //         ..Default::default()
-        //     },
-        //     general_uniform_data.clone()
-        // )
-        // .expect("failed to create staging_uniform_buffer");
-        //
-        // self.vk.general_uniform_buffer = Buffer::new_sized::<GeneralData>(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-        //         ..Default::default()
-        //     },
-        // )
-        // .expect("failed to create uniform_buffer");
-        //
-        // let mut general_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
-        //     &self.vk.command_buffer_allocator,
-        //     self.vk.queue.queue_family_index(),
-        //     CommandBufferUsage::MultipleSubmit,
-        // )
-        // .expect("failed to create uniform_copy_cbb");
-        //
-        // general_uniform_copy_cbb
-        //     .copy_buffer(CopyBufferInfo::buffers(
-        //         self.vk.general_staging_uniform_buffer.clone(),
-        //         self.vk.general_uniform_buffer.clone(),
-        //     ))
-        //     .unwrap();
-        //
-        // let general_uniform_copy_command_buffer = general_uniform_copy_cbb.build().unwrap();
-        //
-        // general_uniform_copy_command_buffer.clone()
-        //     .execute(self.vk.queue.clone())
-        //     .unwrap()
-        //     .then_signal_fence_and_flush()
-        //     .unwrap()
-        //     .wait(None /* timeout */)
-        //     .unwrap();
-        //
-        // // ---------------------------------------------------------------------------------------
-        //
-        // // Staging & Device-local uniform buffers for entities, and their copy & update command buffers  // TODOCOMPUTEUPDATE
-        // // --------------------------------------------------------------------------------------------
-        //
-        // self.vk.entities_staging_uniform_buffer = Buffer::from_iter(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::TRANSFER_SRC,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-        //         ..Default::default()
-        //     },
-        //     entities_uniform_data,
-        // )
-        // .expect("failed to create staging_uniform_buffer");
-        //
-        // self.vk.entities_uniform_buffer = Buffer::new_slice::<EntityData>(
-        //     self.vk.memory_allocator.clone(),
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-        //         ..Default::default()
-        //     },
-        //     entities_uniform_data_len,
-        // )
-        // .expect("failed to create uniform_buffer");
-        //
-        // let mut entities_uniform_copy_cbb = AutoCommandBufferBuilder::primary(
-        //     &self.vk.command_buffer_allocator,
-        //     self.vk.queue.queue_family_index(),
-        //     CommandBufferUsage::MultipleSubmit,
-        // )
-        // .expect("failed to create uniform_copy_cbb");
-        //
-        // entities_uniform_copy_cbb
-        //     .copy_buffer(CopyBufferInfo::buffers(
-        //         self.vk.entities_staging_uniform_buffer.clone(),
-        //         self.vk.entities_uniform_buffer.clone(),
-        //     ))
-        //     .unwrap();
-        //
-        // let entities_uniform_copy_command_buffer = entities_uniform_copy_cbb.build().unwrap();
-        //
-        // entities_uniform_copy_command_buffer.clone()
-        //     .execute(self.vk.queue.clone())
-        //     .unwrap()
-        //     .then_signal_fence_and_flush()
-        //     .unwrap()
-        //     .wait(None /* timeout */)
-        //     .unwrap();
-        //
-        // let entities_uniform_copy_fence: Option<Arc<FenceSignalFuture<CommandBufferExecFuture<sync::future::NowFuture>>>> = None;
-
-        // let uniform_data = vec![UniformData::empty()];
-        // let uniform_data_len = uniform_data.len() as u64;
-
-        // let staging_uniform_buffer = Buffer::from_iter(
-        //     &self.vk.memory_allocator,
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_SRC,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_HOST,
-        //         ..Default::default()
-        //     },
-        //     uniform_data,
-        // )
-        // .expect("failed to create staging_uniform_buffer");
-        //
-        // let uniform_buffer = Buffer::new_slice(
-        //     &self.vk.memory_allocator,
-        //     BufferCreateInfo {
-        //         usage: BufferUsage::STORAGE_BUFFER | BufferUsage::UNIFORM_BUFFER | BufferUsage::TRANSFER_DST,
-        //         ..Default::default()
-        //     },
-        //     AllocationCreateInfo {
-        //         memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-        //         ..Default::default()
-        //     },
-        //     uniform_data_len,
-        // )
-        // .expect("failed to create uniform_buffer");
-        //
-        //
-        // let mut uniform_copy_cbb = AutoCommandBufferBuilder::primary(
-        //     &self.vk.command_buffer_allocator,
-        //     self.vk.queue.queue_family_index(),
-        //     CommandBufferUsage::MultipleSubmit,
-        // )
-        // .expect("failed to create uniform_copy_cbb");
-        //
-        // uniform_copy_cbb
-        //     .copy_buffer(CopyBufferInfo::buffers(
-        //         staging_uniform_buffer.clone(),
-        //         uniform_buffer.clone(),
-        //     ))
-        //     .unwrap();
-        //
-        // let uniform_copy_command_buffer = Arc::new(uniform_copy_cbb.build().unwrap());
-        //
-        // uniform_copy_command_buffer.clone()
-        //     .execute(self.vk.queue.clone())
-        //     .unwrap()
-        //     .then_signal_fence_and_flush()
-        //     .unwrap()
-        //     .wait(None /* timeout */)
-        //     .unwrap();
-        //
-        // let pipeline_layout = self.vk.drawing_pipeline.layout();
-        // let descriptor_set_layouts = pipeline_layout.set_layouts();
-        // let descriptor_set_layout_index = 0;
-        // let descriptor_set_layout = descriptor_set_layouts
-        //     .get(descriptor_set_layout_index)
-        //     .unwrap();
-        // let descriptor_set = PersistentDescriptorSet::new(
-        //     &self.vk.descriptor_set_allocator,
-        //     descriptor_set_layout.clone(),
-        //     [WriteDescriptorSet::buffer(
-        //         0,
-        //         self.vk.uniform_buffer.clone(),
-        //     )],
-        // )
-        // .unwrap();
-        //
-        // let drawing_command_buffers = self.vk.framebuffers
-        //     .iter()
-        //     .map(|framebuffer| {
-        //         let mut builder = AutoCommandBufferBuilder::primary(
-        //             &self.vk.command_buffer_allocator,
-        //             self.vk.queue.queue_family_index(),
-        //             CommandBufferUsage::MultipleSubmit,
-        //         )
-        //         .unwrap();
-        //
-        //         builder
-        //             .begin_render_pass(
-        //                 RenderPassBeginInfo {
-        //                     clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
-        //                     ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
-        //                 },
-        //                 SubpassContents::Inline,
-        //             )
-        //             .unwrap()
-        //             .bind_pipeline_graphics(self.vk.drawing_pipeline.clone())
-        //             .bind_descriptor_sets(
-        //                 PipelineBindPoint::Graphics,
-        //                 pipeline_layout.clone(),
-        //                 self.vk.descriptor_set_layout_index as u32,
-        //                 self.vk.descriptor_set.clone(),
-        //             )
-        //             .bind_vertex_buffers(0, self.vk.vertex_buffer.clone())
-        //             .draw(self.vk.vertex_buffer.len() as u32, 1, 0, 0)
-        //             .unwrap()
-        //             .end_render_pass()
-        //             .unwrap();
-        //
-        //         Arc::new(builder.build().unwrap())
-        //     })
-        //     .collect();
-        //
-        // self.vk.vertex_buffer = vertex_buffer;
-        // self.vk.uniform_buffer = uniform_buffer;
-        // self.vk.drawing_command_buffers = drawing_command_buffers;
+        self.vk.source(input);
     }
 
-    // fn uniform_copy_command_buffer(&self) -> Arc<PrimaryAutoCommandBuffer> {
-    //     let mut uniform_copy_cbb = AutoCommandBufferBuilder::primary(
-    //         &self.command_buffer_allocator,
-    //         self.queue.queue_family_index(),
-    //         CommandBufferUsage::MultipleSubmit,
-    //     )
-    //     .expect("failed to create uniform_copy_cbb");
-    //
-    //     uniform_copy_cbb
-    //         .copy_buffer(CopyBufferInfo::buffers(
-    //             self.staging_uniform_buffer.clone(),
-    //             self.uniform_buffer.clone(),
-    //         ))
-    //         .unwrap();
-    //
-    //     Arc::new(uniform_copy_cbb.build().unwrap())
-    // }
-    //
-    // fn drawing_command_buffers(&self) -> Vec<Arc<PrimaryAutoCommandBuffer>>{
-    //     self.framebuffers
-    //         .iter()
-    //         .map(|framebuffer| {
-    //             let mut builder = AutoCommandBufferBuilder::primary(
-    //                 &self.command_buffer_allocator,
-    //                 self.queue.queue_family_index(),
-    //                 CommandBufferUsage::MultipleSubmit,
-    //             )
-    //             .unwrap();
-    //
-    //             builder
-    //                 .begin_render_pass(
-    //                     RenderPassBeginInfo {
-    //                         clear_values: vec![Some([0.0, 0.0, 0.0, 0.0].into())],
-    //                         ..RenderPassBeginInfo::framebuffer(framebuffer.clone())
-    //                     },
-    //                     SubpassContents::Inline,
-    //                 )
-    //                 .unwrap()
-    //                 .bind_pipeline_graphics(self.drawing_pipeline.clone())
-    //                 .bind_vertex_buffers(0, self.vertex_buffer.clone())
-    //                 .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
-    //                 .unwrap()
-    //                 .end_render_pass()
-    //                 .unwrap();
-    //
-    //             Arc::new(builder.build().unwrap())
-    //         })
-    //         .collect()
-    // }
+    /// Shows the animation form start to end once.
+    /// - Panics if there was an unexpected exit code from the event loop
+    /// - Returns `false` if the window was closed while showing.
+    /// - Returns true otherwise.
+    pub fn show(&mut self) -> bool {
+        match self.vk.show(&mut self.event_loop, (0, 0)) {
+            0 => {
+                // Successfully finished.
+                true
+            }
+            1 => {
+                // Window closed
+                println!("\nℹ Window closed.");
+                false
+            }
+            n => {
+                println!("🛑 Unexpected return code \"{}\" when running the main loop", n);
+                false
+            }
+        }
+    }
 
     pub fn save(&mut self, width: u32, height: u32) {
         match self.vk.show(&mut self.event_loop, (width, height)) {
@@ -1444,42 +1050,56 @@ impl Vera {
     }
 }
 
+/// Treats `input`, and returns related data, transformers and lengths.
+fn from_input(input: Input) -> ((GeneralData, (Transformer, Transformer)), (u64, Vec<EntityData>, Vec<Transformer>), (u64, Vec<TransformVertexData>, Vec<Transformer>), Vec<VertexData>)  {
+    let Input {
+        m,
+        v: View {
+            t: view_t,
+        },
+        p: Projection {
+            t: projection_t,
+        },
+    } = input;
+
+    let general_uniform_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
+    let general_uniform_data: GeneralData = GeneralData::from_resolution([1.0, 1.0]);
+
+    let mut entities_uniform_transformer: Vec<Transformer> = vec![];
+    let mut transform_vertex_transformer: Vec<Transformer> = vec![];
+    let mut vertex_data: Vec<VertexData> = vec![];
+
+    for (entity_id, model) in m.into_iter().enumerate() {
+        entities_uniform_transformer.push(Transformer::from_t(model.t));
+        for v in model.vertices.into_iter() {
+            transform_vertex_transformer.push(Transformer::from_t(v.t));
+            vertex_data.push(VertexData::new(entity_id as u32, v.position, v.color));
+        }
+    }
+
+    let entities_uniform_len = entities_uniform_transformer.len() as u64;
+    let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); entities_uniform_len as usize];
+    let vertex_len = vertex_data.len() as u64;
+
+    let transform_vertex_data: Vec<TransformVertexData> = vec![TransformVertexData::new(); vertex_len as usize];
+    
+    ((general_uniform_data, general_uniform_transformer), (entities_uniform_len, entities_uniform_data, entities_uniform_transformer), (vertex_len, transform_vertex_data, transform_vertex_transformer), vertex_data)
+}
+
 impl Vk {
     /// Resets all content to `input`.
     fn source(&mut self, input: Input) {
-        self.entities_uniform_len = input.m.len() as u64;
-        self.entities_uniform_data = vec![EntityData::new(); self.entities_uniform_len as usize];
-        self.entities_uniform_transformer = input.m
-            .iter()
-            .map(|model: &vera_shapes::Model| Transformer::from_t(model.t))
-            .collect::<Vec<Transformer>>();
+        (
+            (self.general_uniform_data, self.general_uniform_transformer),
+            (self.entities_uniform_len, self.entities_uniform_data, self.entities_uniform_transformer),
+            (self.vertex_len, self.transform_vertex_data, self.transform_vertex_transformer), 
+            self.vertex_data
+        ) = from_input(input);
+
         self.recreate_entities_uniform_buffer();
-
-        self.vertex_len = input.m.len() as u64;
-        self.vertex_data = input.m
-            .iter()
-            .enumerate()
-            .flat_map(|model: (usize, &vera_shapes::Model)| {
-                model.1.vertices.into_iter().map(move |mut vertex| {
-                    VertexData::from_v(vertex, model.0 as u32)
-                })
-            })
-            .collect::<Vec<VertexData>>();
         self.recreate_vertex_buffer();
-
-        self.transform_vertex_data = vec![TransformVertexData::new(); self.vertex_len as usize];
-        self.transform_vertex_transformer = input.m
-            .iter()
-            .flat_map(|model: &vera_shapes::Model| model.vertices.into_iter().map(|vertex| {
-                Transformer::from_t(vertex.t)
-            }))
-            .collect::<Vec<Transformer>>();
         self.recreate_transform_vertex_buffer();
-
-        self.general_uniform_data = GeneralData::from_resolution(self.window.inner_size().into());
-        self.general_uniform_transformer = (Transformer::from_t(input.v.t), Transformer::from_t(input.p.t)); // (View, Projection)
         self.recreate_general_uniform_buffer();
-        
     }
 
     // Buffer recreation
@@ -1496,7 +1116,7 @@ impl Vk {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            self.vertex_data,
+            std::mem::take(&mut self.vertex_data),
         )
         .expect("failed to create staging_vertex_buffer");
 
@@ -1516,20 +1136,22 @@ impl Vk {
         )
         .expect("failed to create vertex_buffer");
 
-        self.vertex_copy_command_buffer = 
+        let mut vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &self.command_buffer_allocator,
                 self.queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
-            .expect("failed to create copy_cbb")
+            .expect("failed to create vertex_cbb");
+
+        vertex_cbb
             .copy_buffer(CopyBufferInfo::buffers(
                 self.staging_vertex_buffer.clone(),
                 self.vertex_buffer.clone(),
             ))
-            .unwrap()
-            .build()
             .unwrap();
+
+        self.vertex_copy_command_buffer = vertex_cbb.build().unwrap();
     }
 
     fn recreate_transform_vertex_buffer(&mut self) {
@@ -1544,7 +1166,7 @@ impl Vk {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            self.transform_vertex_data,
+            std::mem::take(&mut self.transform_vertex_data),
         )
         .expect("failed to create staging_vertex_buffer");
 
@@ -1564,20 +1186,22 @@ impl Vk {
         )
         .expect("failed to create vertex_buffer");
 
-        self.transform_vertex_copy_command_buffer = 
+        let mut transform_vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &self.command_buffer_allocator,
                 self.queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
-            .expect("failed to create copy_cbb")
+            .expect("failed to create transform_vertex_cbb");
+
+        transform_vertex_cbb
             .copy_buffer(CopyBufferInfo::buffers(
                 self.staging_transform_vertex_buffer.clone(),
                 self.transform_vertex_buffer.clone(),
             ))
-            .unwrap()
-            .build()
             .unwrap();
+
+        self.transform_vertex_copy_command_buffer = transform_vertex_cbb.build().unwrap();
     }
 
     fn recreate_general_uniform_buffer(&mut self) {
@@ -1611,20 +1235,22 @@ impl Vk {
         )
         .expect("failed to create uniform_buffer");
 
-        self.general_uniform_copy_command_buffer = 
+        let mut general_uniform_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &self.command_buffer_allocator,
                 self.queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
-            .expect("failed to create copy_cbb")
+            .expect("failed to create general_uniform_cbb");
+
+        general_uniform_cbb
             .copy_buffer(CopyBufferInfo::buffers(
                 self.general_staging_uniform_buffer.clone(),
                 self.general_uniform_buffer.clone(),
             ))
-            .unwrap()
-            .build()
             .unwrap();
+
+        self.general_uniform_copy_command_buffer = general_uniform_cbb.build().unwrap();
     }
 
     fn recreate_entities_uniform_buffer(&mut self) {
@@ -1639,7 +1265,7 @@ impl Vk {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            self.entities_uniform_data,
+            std::mem::take(&mut self.entities_uniform_data),
         )
         .expect("failed to create staging_uniform_buffer");
 
@@ -1659,29 +1285,31 @@ impl Vk {
         )
         .expect("failed to create uniform_buffer");
 
-        self.entities_uniform_copy_command_buffer = 
+        let mut entities_uniform_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &self.command_buffer_allocator,
                 self.queue.queue_family_index(),
                 CommandBufferUsage::MultipleSubmit,
             )
-            .expect("failed to create copy_cbb")
+            .expect("failed to create entities_uniform_cbb");
+
+        entities_uniform_cbb
             .copy_buffer(CopyBufferInfo::buffers(
                 self.entities_staging_uniform_buffer.clone(),
                 self.entities_uniform_buffer.clone(),
             ))
-            .unwrap()
-            .build()
             .unwrap();
+
+        self.entities_uniform_copy_command_buffer = entities_uniform_cbb.build().unwrap();
     }
 
     // Staging buffer update
 
-    // fn update_vertex_buffer(&mut self) {}
+    // fn update_vertex_buffer(&mut self) {} // Set once
 
     fn update_transform_vertex_buffer(&mut self) {
         for (o, i) in self.staging_transform_vertex_buffer.write().unwrap().iter_mut()
-            .zip(self.transform_vertex_transformer.iter()) {
+            .zip(self.transform_vertex_transformer.iter_mut()) {
                 let mat = i.update(self.time).0;
                 ((*o).vertex_matrix0, (*o).vertex_matrix1, (*o).vertex_matrix2, (*o).vertex_matrix3) = (
                     [mat[0], mat[1], mat[2], mat[3]],
@@ -1703,7 +1331,7 @@ impl Vk {
 
     fn update_entities_uniform_buffer(&mut self) {
         for (o, i) in self.entities_staging_uniform_buffer.write().unwrap().iter_mut()
-            .zip(self.entities_uniform_transformer.iter()) {
+            .zip(self.entities_uniform_transformer.iter_mut()) {
             (*o).model_matrix = i.update(self.time).0;
         }
 
@@ -1800,7 +1428,7 @@ impl Vk {
             // driver to optimize things, at the cost of slower window resizes.
             // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
             self.drawing_pipeline = {
-                let vertex_input_state = [VertexData::per_vertex()]
+                let vertex_input_state = [VertexData::per_vertex(), TransformVertexData::per_vertex()]
                     .definition(&self.drawing_vs.info().input_interface)
                     .unwrap();
                 let stages = [
