@@ -2,7 +2,7 @@ use vera::*;
 
 #[hot_lib_reloader::hot_module(dylib = "lib")]
 mod hot_lib {
-    use vera_shapes::{Model, Input};
+    use vera_shapes::Input;
     // Path form the project root
 
     #[hot_function]
@@ -16,5 +16,6 @@ fn main() {
         if !v.show() {
             break 'dev;
         }
+        v.reset(hot_lib::get())
     }
 }

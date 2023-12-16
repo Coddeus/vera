@@ -35,11 +35,14 @@ impl Mat4 {
         ]);
     }
 
-    /// Returns a copy of this Mat4 multiplied by a float scalar.
-    pub fn mult_float(&self, factor: f32) -> Mat4{
-        let mut m = self.clone();
-        m.0.iter_mut().map(|entry| *entry*=factor);
-        m
+    /// Returns the linear interpolation between this matrix and the identity matrix, with the given *advancement* (between 0.0 and 1.0, where 0.0 is the identity matrix, and 1.0 is *self*).
+    pub fn interpolate_idmat(&self, advancement: f32) -> Mat4 {
+        Mat4([
+            self.0[0] * advancement + 1.0 * (1.0-advancement)   ,   self.0[1] * advancement                             ,   self.0[2] * advancement                             ,   self.0[3] * advancement                             ,
+            self.0[4] * advancement                             ,   self.0[5] * advancement + 1.0 * (1.0-advancement)   ,   self.0[6] * advancement                             ,   self.0[7] * advancement                             ,
+            self.0[8] * advancement                             ,   self.0[9] * advancement                             ,   self.0[10] * advancement + 1.0 * (1.0-advancement)  ,   self.0[11] * advancement                            ,
+            self.0[12] * advancement                            ,   self.0[13] * advancement                            ,   self.0[14] * advancement                            ,   self.0[15] * advancement + 1.0 * (1.0-advancement)  ,
+        ])
     }
 
     /// Add a scale transformation to the Mat4, for each axis.

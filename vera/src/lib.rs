@@ -14,6 +14,7 @@ pub mod transformer;
 pub use transformer::*;
 
 use vera_shapes::{Input, Model, Tf, Vertex as ModelVertex, View, Projection};
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -160,6 +161,7 @@ pub struct Vk {
     drawing_fs: EntryPoint,
     drawing_pipeline: Arc<GraphicsPipeline>,
     descriptor_set: Arc<PersistentDescriptorSet>,
+    descriptor_set_layout: Arc<DescriptorSetLayout>,
     descriptor_set_layout_index: usize,
 
     frames_in_flight: usize,
@@ -218,7 +220,7 @@ mod vs {
 
             void main() {
                 mat4 transform = mat4(vertex_matrix0, vertex_matrix1, vertex_matrix2, vertex_matrix3);
-                vec4 uv = vec4(position, 1.0) * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
+                vec4 uv = vec4(position, 1.0) * transform * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
 
                 if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
                     uv.x *= general_buf.data.resolution.y/general_buf.data.resolution.x;
@@ -836,10 +838,11 @@ impl Vera {
             pipeline_layout.set_layouts();
 
         let descriptor_set_layout_index: usize = 0;
-        let descriptor_set_layout: &Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
+        let descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
             descriptor_set_layouts
                 .get(descriptor_set_layout_index)
-                .unwrap();
+                .unwrap()
+                .clone();
         let descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
             descriptor_set_layout.clone(),
@@ -973,6 +976,7 @@ impl Vera {
                 drawing_vs,
                 drawing_fs,
                 descriptor_set,
+                descriptor_set_layout,
                 descriptor_set_layout_index,
                 drawing_pipeline,
                 frames_in_flight,
@@ -1303,7 +1307,7 @@ impl Vk {
         self.entities_uniform_copy_command_buffer = entities_uniform_cbb.build().unwrap();
     }
 
-    // Staging buffer update
+    // Staging buffer update & copy to device-local memory
 
     // fn update_vertex_buffer(&mut self) {} // Set once
 
@@ -1323,7 +1327,8 @@ impl Vk {
     }
 
     fn update_general_uniform_buffer(&mut self) {
-        self.general_staging_uniform_buffer.write().unwrap().view_matrix = self.general_uniform_transformer.0.update(self.time).0;
+        let x = self.general_uniform_transformer.0.update(self.time).0;
+        self.general_staging_uniform_buffer.write().unwrap().view_matrix = x;
         self.general_staging_uniform_buffer.write().unwrap().projection_matrix = self.general_uniform_transformer.1.update(self.time).0;
         
         self.copy_general_uniform_buffer();
@@ -1351,7 +1356,7 @@ impl Vk {
             .unwrap();
     }
 
-    fn copy_transform_vertex_buffer(&mut self) {
+    fn copy_transform_vertex_buffer(&mut self) { // Add fences to these methods
         self.transform_vertex_copy_command_buffer
             .clone()
             .execute(self.queue.clone())
@@ -1382,6 +1387,13 @@ impl Vk {
             .unwrap()
             .wait(None /* timeout */)
             .unwrap();
+    }
+
+    /// Updates the staging buffers and copies their data to the device-local buffers
+    fn update(&mut self) {
+        self.update_transform_vertex_buffer();
+        self.update_general_uniform_buffer();
+        self.update_entities_uniform_buffer();
     }
 
     /// Draws a frame
@@ -1485,14 +1497,7 @@ impl Vk {
                     self.general_uniform_data.clone(),
                 )
             };
-            self.general_uniform_copy_command_buffer
-                .clone()
-                .execute(self.queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None /* timeout */)
-                .unwrap();
+            self.copy_general_uniform_buffer();
         }
 
         let (image_i, suboptimal, acquire_future) =
@@ -1587,7 +1592,7 @@ impl Vk {
     ) -> i32 {
         println!("♻ --- {}: Showing with updated data.", self.show_count);
         let start = Instant::now();
-        let mut first_elapsed: bool = true;
+        let mut max_elapsed: bool = true;
         event_loop.run_return(move |event, _, control_flow| match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -1602,17 +1607,18 @@ impl Vk {
                 self.recreate_swapchain = true;
             }
             Event::MainEventsCleared => {
+                self.time = start.elapsed().as_secs_f32();
                 // if elements.ended() {
                 //     *control_flow = ControlFlow::ExitWithCode(0);
                 // }
-                if start.elapsed().as_secs_f32() > 1.0 {
-                    if first_elapsed {
-                        first_elapsed = false;
+                if self.time > 2.0 {
+                    if max_elapsed {
+                        max_elapsed = false;
                         self.show_count += 1;
                     }
                     *control_flow = ControlFlow::ExitWithCode(0);
                 }
-                // self.update();
+                self.update();
                 self.draw();
                 // if save.0 > 0 && save.0 > 0 { self.encode(); }
             }

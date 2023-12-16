@@ -96,18 +96,9 @@ pub(crate) struct Transformer {
 }
 
 impl Transformer {
-    pub(crate) fn empty() -> Self {
-        Self {
-            previous: vec![],
-            current: vec![],
-
-            result: Mat4::new(),
-        }
-    }
-
     /// Creates a transformer from a vector of transformations.
     pub(crate) fn from_t(transformations: Vec<Tf>) -> Self {
-        Self {
+        let x = Self {
             previous: Vec::with_capacity(transformations.len()),
             current: transformations
                 .into_iter()
@@ -115,7 +106,13 @@ impl Transformer {
                 .collect::<Vec<TransformMatrix>>(),
 
             result: Mat4::new(),
+        };
+        for y in x.current.iter() {
+            println!("{:?}", y.mat);
+
         }
+
+        x
     }
 
     // TODO update with drain_filter() when stable
@@ -124,39 +121,39 @@ impl Transformer {
 
     /// Updates the transformer, and returns the transformations matrix of the corresponding vertex for `time`.
     pub(crate) fn update(&mut self, time: f32) -> Mat4 {
-        let mut first = true;
-        let mut type_of_previous: Option<TransformType> = None;
+        // let mut first = true;
+        // let mut type_of_previous: Option<TransformType> = None;
 
-        self.current.retain(|&t| {
-            if first {
-                if t.end < time {
-                    self.result.mult(t.mat);
-                    self.previous.push(t);
-                    return false;
-                } else {
-                    first = false;
-                    type_of_previous == Some(t.ty);
-                    return true;
-                }
-            }
-
-            if type_of_previous == Some(t.ty) {
-                if t.end < time {
-                    self.result.mult(t.mat);
-                    self.previous.push(t);
-                    return false;
-                } else {
-                    return true;
-                }
-            }
-
-            type_of_previous = None;
-
-            true
-        });
+        // self.current.retain(|&t| {
+        //     if first {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             first = false;
+        //             type_of_previous = Some(t.ty);
+        //             return true;
+        //         }
+        //     }
+// 
+        //     if type_of_previous == Some(t.ty) {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             return true;
+        //         }
+        //     }
+// 
+        //     type_of_previous = None;
+// 
+        //     true
+        // });
 
         let mut buffer_matrix = self.result;
-        self.current.iter().for_each(|tf| { buffer_matrix.mult(tf.mat.mult_float(evolution(tf.start, tf.end, time, tf.e))); });
+        self.current.iter().for_each(|tf| { buffer_matrix.mult(tf.mat.interpolate_idmat(evolution(tf.start, tf.end, time, tf.e))); });
         buffer_matrix
     }
 }

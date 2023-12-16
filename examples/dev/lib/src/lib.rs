@@ -1,7 +1,7 @@
 use std::vec;
 
 use vera_shapes::{
-    Input, View, Projection, Model, Triangle, Vertex,
+    Input, View, Projection, Model, Triangle, Vertex, Transformation, 
     D_RANDOM_VERTEX_COLOR, D_VERTEX_ALPHA, D_VERTEX_COLOR,
 };
 
@@ -26,7 +26,7 @@ pub fn get() -> Input {
                 Vertex::new().pos(0.5, 0.5, 0.5),
                 Vertex::new().pos(0.0, 1.0, 0.0),
             ]),
-            t1,
+            t1.transform(Transformation::Translate(1.0, 1.0, 0.0)).start(0.0).end(1.0),
         ],
         v: View::new(),
         p: Projection::new(),
