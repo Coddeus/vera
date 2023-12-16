@@ -24,6 +24,7 @@ pub struct Tf {
 
 /// The available transformations
 /// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.
+#[derive(Clone, Copy)]
 pub enum Transformation {
     /// Vertex/Model: A scale operation with the provided X, Y and Z scaling.
     Scale(f32, f32, f32),

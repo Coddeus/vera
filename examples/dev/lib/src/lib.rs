@@ -1,4 +1,4 @@
-use std::vec;
+use std::{vec, f32::consts::PI};
 
 use vera_shapes::{
     Input, View, Projection, Model, Triangle, Vertex, Transformation, 
@@ -8,9 +8,9 @@ use vera_shapes::{
 #[no_mangle]
 pub fn get() -> Input {
     unsafe {
-        D_RANDOM_VERTEX_COLOR = false;
+        D_RANDOM_VERTEX_COLOR = true;
         D_VERTEX_COLOR = [1.0, 1.0, 1.0];
-        D_VERTEX_ALPHA = 1.0;
+        D_VERTEX_ALPHA = 0.5;
     }
 
     let t1 = Triangle::new(
@@ -23,10 +23,13 @@ pub fn get() -> Input {
         m: vec![
             Model::from_vertices(vec![
                 Vertex::new().pos(0.0, 0.0, 0.0),
-                Vertex::new().pos(0.5, 0.5, 0.5),
+                Vertex::new().pos(0.5, 0.5, 0.5)
+                .transform(Transformation::Translate(-0.5, -0.5, 0.0)).start(0.0).end(1.0)
+                .transform(Transformation::Translate(0.5, 0.5, 0.0)).start(1.0).end(2.0)
+                .transform(Transformation::RotateZ(PI * 2.0)).start(0.0).end(2.0),
                 Vertex::new().pos(0.0, 1.0, 0.0),
             ]),
-            t1.transform(Transformation::Translate(1.0, 1.0, 0.0)).start(0.0).end(1.0),
+            t1
         ],
         v: View::new(),
         p: Projection::new(),
