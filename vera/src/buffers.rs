@@ -82,6 +82,26 @@ impl GeneralData {
     //     self.resolution = inner_size;
     // }
 }
+impl Default for GeneralData {
+    fn default() -> Self {
+        GeneralData {
+            projection_matrix: [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0,
+            ],
+            view_matrix: [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0,
+            ],
+            resolution: [1.0, 1.0],
+            time: 0.0,
+        }
+    }
+}
 
 /// Uniform data for one entity
 #[derive(Debug, Clone, BufferContents)]

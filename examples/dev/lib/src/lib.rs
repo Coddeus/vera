@@ -10,7 +10,7 @@ pub fn get() -> Input {
     unsafe {
         D_RANDOM_VERTEX_COLOR = true;
         D_VERTEX_COLOR = [1.0, 1.0, 1.0];
-        D_VERTEX_ALPHA = 0.5;
+        D_VERTEX_ALPHA = 0.8;
     }
 
     let t1 = Triangle::new(
@@ -29,7 +29,7 @@ pub fn get() -> Input {
                 .transform(Transformation::RotateZ(PI * 2.0)).start(0.0).end(2.0),
                 Vertex::new().pos(0.0, 1.0, 0.0),
             ]),
-            t1
+            t1.transform(Transformation::Scale(2.0, 2.0, 2.0))
         ],
         v: View::new(),
         p: Projection::new(),

@@ -76,7 +76,7 @@ pub struct Vera {
 }
 
 /// The underlying base with executes specific tasks.
-pub struct Vk {
+struct Vk {
     // ----- Created on initialization
     library: Arc<vulkano::VulkanLibrary>,
     required_extensions: vulkano::instance::InstanceExtensions,
@@ -219,16 +219,17 @@ mod vs {
             layout(location = 0) out vec4 out_color;
 
             void main() {
+                out_color = color;
+
                 mat4 transform = mat4(vertex_matrix0, vertex_matrix1, vertex_matrix2, vertex_matrix3);
                 vec4 uv = vec4(position, 1.0) * transform * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
 
-                if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
+                                if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
                     uv.x *= general_buf.data.resolution.y/general_buf.data.resolution.x;
-                } else {
+                                    } else {
                     uv.y *= general_buf.data.resolution.x/general_buf.data.resolution.y;
                 }
 
-                out_color = color;
                 gl_Position = uv;
             }
         ",
@@ -484,7 +485,6 @@ impl Vera {
         )
         .expect("failed to create vertex_buffer");
 
-        // Not kept
         let mut vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
@@ -550,7 +550,6 @@ impl Vera {
         )
         .expect("failed to create transform_vertex_buffer");
 
-        // Not kept
         let mut transform_vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
             AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
@@ -1100,10 +1099,26 @@ impl Vk {
             self.vertex_data
         ) = from_input(input);
 
-        self.recreate_entities_uniform_buffer();
         self.recreate_vertex_buffer();
         self.recreate_transform_vertex_buffer();
+        self.recreate_entities_uniform_buffer();
         self.recreate_general_uniform_buffer();
+
+        self.descriptor_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            self.descriptor_set_layout.clone(),
+            [
+                WriteDescriptorSet::buffer(0, self.general_uniform_buffer.clone()),
+                WriteDescriptorSet::buffer(1, self.entities_uniform_buffer.clone()),
+            ],
+            [],
+        )
+        .unwrap();
+
+        self.copy_vertex_buffer();
+        self.copy_transform_vertex_buffer();
+        self.copy_entities_uniform_buffer();
+        self.copy_general_uniform_buffer();
     }
 
     // Buffer recreation
@@ -1327,9 +1342,14 @@ impl Vk {
     }
 
     fn update_general_uniform_buffer(&mut self) {
-        let x = self.general_uniform_transformer.0.update(self.time).0;
-        self.general_staging_uniform_buffer.write().unwrap().view_matrix = x;
-        self.general_staging_uniform_buffer.write().unwrap().projection_matrix = self.general_uniform_transformer.1.update(self.time).0;
+        let image_extent: [u32; 2] = self.window.inner_size().into();
+        {
+            let mut buf = self.general_staging_uniform_buffer.write().unwrap();
+            buf.time = self.time;
+            buf.resolution = [image_extent[0] as f32, image_extent[1] as f32];
+            buf.view_matrix = self.general_uniform_transformer.0.update(self.time).0;
+            buf.projection_matrix = self.general_uniform_transformer.1.update(self.time).0;
+        }
         
         self.copy_general_uniform_buffer();
     }
@@ -1488,16 +1508,6 @@ impl Vk {
                 )
                 .unwrap()
             };
-
-            self.general_uniform_data =
-                GeneralData::from_resolution([extent[0] as f32, extent[1] as f32]);
-            unsafe {
-                std::ptr::write(
-                    &mut *self.general_staging_uniform_buffer.write().unwrap(),
-                    self.general_uniform_data.clone(),
-                )
-            };
-            self.copy_general_uniform_buffer();
         }
 
         let (image_i, suboptimal, acquire_future) =
@@ -1524,7 +1534,7 @@ impl Vk {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.0, 0.0, 0.0, 0.4].into())], // custom evolving background color
+                    clear_values: vec![Some([0.0, 0.0, 0.0, 1.0].into())], // custom evolving background color
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
                 },
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },

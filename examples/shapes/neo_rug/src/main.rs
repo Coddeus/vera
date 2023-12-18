@@ -7,7 +7,9 @@ fn main() {
         D_VERTEX_ALPHA = 1.0;
     }
 
-    v.show();
+    while v.show() {
+        v.reset(get());
+    };
 }
 
 fn get() -> Input {

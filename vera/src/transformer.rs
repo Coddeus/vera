@@ -134,7 +134,7 @@ fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
         else { return 1.0; }
     }
 
-    if time <= start {
+    if time < start {
         return 0.0;
     }
     if time >= end {
