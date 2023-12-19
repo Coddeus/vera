@@ -1,12 +1,13 @@
-### *Hot-lib-reloader*
-*Files generated with `cargo generate rksm/rust-hot-reload`.*  
-*This is an example workflow to use hot-lib-reloader while coding. See https://github.com/rksm/hot-lib-reloader-rs and https://robert.kra.hn/posts/hot-reloading-rust/ for more info.*
+# Dev
+Vera with hot-reload for development.
 
 ## Usage
-
 In the folder of this README:
 ```shell
 cargo watch -w lib -x 'build -p lib'
 # Another terminal
 cargo run
 ```
+
+Then, modifying the get() function in `lib/src/lib.rs` will modify the render when the animation restarts.
+src/main.rs is the intermediate between Vera and the hot lib.

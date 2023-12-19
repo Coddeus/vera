@@ -1,4 +1,4 @@
-/// The speed evolution of a transformation.
+/// The evolution of a transformation or colorization.
 #[derive(Copy, Clone)]
 pub enum Evolution {
     /// Constant speed from start to end.

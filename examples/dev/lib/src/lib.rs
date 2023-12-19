@@ -25,6 +25,7 @@ pub fn get() -> Input {
     );
 
     Input {
+        meta: Default::default(),
         m: vec![
             t1.transform(Transformation::Scale(2.0, 2.0, 2.0)).start_t(0.0).end_t(2.0)
         ],
