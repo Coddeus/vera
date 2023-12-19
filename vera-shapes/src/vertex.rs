@@ -4,8 +4,9 @@
 use fastrand::f32;
 
 use crate::{
-    Evolution, Transformation, Tf,
-    D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME
+    Evolution, Tf, Cl, Transformation, Colorization, 
+    D_TRANSFORMATION_SPEED_EVOLUTION, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME,
+    D_COLORIZATION_SPEED_EVOLUTION, D_COLORIZATION_START_TIME, D_COLORIZATION_END_TIME,
 };
 
 /// A vertex with:
@@ -24,7 +25,8 @@ pub struct Vertex {
     pub color: [f32; 4],
 
     // Treated in CPU
-    pub t: Vec<Tf>
+    pub t: Vec<Tf>,
+    pub c: Vec<Cl>,
 }
 impl Vertex {
     /// A new default Vertex. Call this method to initialize a vertex, before transforming it.
@@ -46,6 +48,7 @@ impl Vertex {
                     ]
                 },
                 t: vec![],
+                c: vec![],
             }
         }
     }
@@ -92,13 +95,13 @@ impl Vertex {
         self
     }
 
-    /// Sets the position of the vertex and ends the method calls pipe.
-    pub(crate) fn set_pos(&mut self, x: f32, y: f32, z: f32) {
-        self.position = [x, y, z];
-    }
+    // /// Sets the position of the vertex and ends the method calls pipe.
+    // pub(crate) fn set_pos(&mut self, x: f32, y: f32, z: f32) {
+    //     self.position = [x, y, z];
+    // }
 
     /// Sets the color of the vertex and ends the method calls pipe.
-    pub(crate) fn set_color(&mut self, red: f32, green: f32, blue: f32) {
+    pub(crate) fn set_rgb(&mut self, red: f32, green: f32, blue: f32) {
         self.color = [red, green, blue, self.color[3]];
     }
 
@@ -122,22 +125,55 @@ impl Vertex {
         self
     }
 
+    /// Adds a new color change with default speed evolution, start time and end time.
+    /// # Don't
+    /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
+    pub fn recolor(mut self, colorization: Colorization) -> Self {
+        self.c.push(Cl {
+            c: colorization,
+            e: unsafe { D_COLORIZATION_SPEED_EVOLUTION },
+            start: unsafe { D_COLORIZATION_START_TIME },
+            end: unsafe { D_COLORIZATION_END_TIME },
+        });
+        self
+    }
+
+    /// Modifies the speed evolution of the latest colorization added.
+    pub fn evolution_c(mut self, e: Evolution) -> Self {
+        self.c.last_mut().unwrap().e = e;
+        self
+    }
+
+    /// Modifies the start time of the latest colorization added.
+    /// A start after an end will result in the colorization being instantaneous at start.
+    pub fn start_c(mut self, start: f32) -> Self {
+        self.c.last_mut().unwrap().start = start;
+        self
+    }
+
+    /// Modifies the end time of the latest colorization added.
+    /// An end before a start will result in the colorization being instantaneous at start.
+    pub fn end_c(mut self, end: f32) -> Self {
+        self.c.last_mut().unwrap().end = end;
+        self
+    }
+
     /// Modifies the speed evolution of the latest transformation added.
-    pub fn evolution(mut self, e: Evolution) -> Self {
+    pub fn evolution_t(mut self, e: Evolution) -> Self {
         self.t.last_mut().unwrap().e = e;
         self
     }
 
     /// Modifies the start time of the latest transformation added.
     /// A start after an end will result in the transformation being instantaneous at start.
-    pub fn start(mut self, start: f32) -> Self {
+    pub fn start_t(mut self, start: f32) -> Self {
         self.t.last_mut().unwrap().start = start;
         self
     }
 
     /// Modifies the end time of the latest transformation added.
     /// An end before a start will result in the transformation being instantaneous at start.
-    pub fn end(mut self, end: f32) -> Self {
+    pub fn end_t(mut self, end: f32) -> Self {
         self.t.last_mut().unwrap().end = end;
         self
     }

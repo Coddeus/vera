@@ -31,21 +31,21 @@ impl Projection {
     }
 
     /// Modifies the speed evolution of the latest transformation added.
-    pub fn evolution(mut self, e: Evolution) -> Self {
+    pub fn evolution_t(mut self, e: Evolution) -> Self {
         self.t.last_mut().unwrap().e = e;
         self
     }
 
     /// Modifies the start time of the latest transformation added.
     /// A start after an end will result in the transformation being instantaneous at start.
-    pub fn start(mut self, start: f32) -> Self {
+    pub fn start_t(mut self, start: f32) -> Self {
         self.t.last_mut().unwrap().start = start;
         self
     }
 
     /// Modifies the end time of the latest transformation added.
     /// An end before a start will result in the transformation being instantaneous at start.
-    pub fn end(mut self, end: f32) -> Self {
+    pub fn end_t(mut self, end: f32) -> Self {
         self.t.last_mut().unwrap().end = end;
         self
     }

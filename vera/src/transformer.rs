@@ -1,5 +1,5 @@
-use vera_shapes::{Transformation, Tf, Evolution};
-use crate::Mat4;
+use vera_shapes::{Transformation, Tf, Evolution, Cl, Colorization};
+use crate::{Mat4, Color};
 
 // /// Lighter enum for transformation types.
 // #[derive(PartialEq, Eq, Clone, Copy)]
@@ -41,16 +41,16 @@ impl Mat4 {
     /// Returns the transformation matrix for this transformation, with this advancement.
     fn from_t(transformation: Transformation, advancement: f32) -> Self {
         match transformation {
-            Transformation::Scale(x, y, z) => Mat4::scale(x * advancement, y * advancement, z * advancement),
-            Transformation::Translate(x, y, z) => Mat4::translate(x * advancement, y * advancement, z * advancement),
-            Transformation::RotateX(angle) => Mat4::rotate_x(angle * advancement),
-            Transformation::RotateY(angle) => Mat4::rotate_y(angle * advancement),
-            Transformation::RotateZ(angle) => Mat4::rotate_z(angle * advancement),
+            Transformation::Scale(x, y, z) => Self::scale(x * advancement + (1.0 - advancement), y * advancement + (1.0 - advancement), z * advancement + (1.0 - advancement)),
+            Transformation::Translate(x, y, z) => Self::translate(x * advancement, y * advancement, z * advancement),
+            Transformation::RotateX(angle) => Self::rotate_x(angle * advancement),
+            Transformation::RotateY(angle) => Self::rotate_y(angle * advancement),
+            Transformation::RotateZ(angle) => Self::rotate_z(angle * advancement),
 
-            Transformation::Lookat(eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z) => Mat4::lookat(eye_x * advancement, eye_y * advancement, eye_z * advancement, target_x * advancement, target_y * advancement, target_z * advancement, up_x * advancement, up_y * advancement, up_z * advancement),
+            Transformation::Lookat(eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z) => Self::lookat(eye_x * advancement, eye_y * advancement, eye_z * advancement, target_x * advancement, target_y * advancement, target_z * advancement, up_x * advancement, up_y * advancement, up_z * advancement),
 
-            Transformation::Orthographic(l, r, b, t, n, f) => Mat4::project_orthographic(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
-            Transformation::Perspective(l, r, b, t, n, f) => Mat4::project_perspective(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
+            Transformation::Orthographic(l, r, b, t, n, f) => Self::project_orthographic(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
+            Transformation::Perspective(l, r, b, t, n, f) => Self::project_perspective(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
             _ => Mat4::new(),
         }
     }
@@ -74,10 +74,7 @@ impl Transformer {
     pub(crate) fn from_t(transformations: Vec<Tf>) -> Self {
         Self {
             previous: Vec::with_capacity(transformations.len()),
-            current: transformations
-                .into_iter()
-                .map(|tf| { tf.into() })
-                .collect::<Vec<Tf>>(),
+            current: transformations,
 
             result: Mat4::new(),
         }
@@ -126,6 +123,83 @@ impl Transformer {
     }
 }
 
+/// Intermediate type between Vertex/Model/View/Projection and buffer-sent Mat4.
+/// Contains all transformations in the form of matrices.
+pub(crate) struct Colorizer {
+    /// Matrices already fully applied to `result`, not used anymore. // TODO Remove?
+    previous: Vec<Cl>,
+    /// All matrices still needed every frame for `result` calculation.
+    current: Vec<Cl>,
+
+    /// The result of the previous matrices multiplication.
+    /// Modified with current transformations before being sent to the buffer.
+    result: Color,
+}
+
+impl Color {
+    /// Modifies `self` given a colorization and an advancement.
+    fn with_c(&mut self, colorization: Colorization, advancement: f32) {
+        match colorization {
+            Colorization::ToColor(r, g, b, a) => self.interpolate([r, g, b, a], advancement),
+            _ => { println!("No colorization applied, unknown colorization."); },
+        }
+    }
+}
+
+impl Colorizer {
+    /// Creates a colorizer from a vector of colorizations.
+    pub(crate) fn from_c(initial_color: [f32 ; 4], colorizations: Vec<Cl>) -> Self {
+        Self {
+            previous: Vec::with_capacity(colorizations.len()),
+            current: colorizations,
+
+            result: Color(initial_color),
+        }
+    }
+
+    // TODO update with drain_filter() when stable
+    // The storing order cannot change, except if consecutive colorizations have the same type.
+    // Faster reset in a loop-like action ?
+
+    /// Updates the colorizer, and returns the colorizations matrix of the corresponding vertex for `time`.
+    pub(crate) fn update(&mut self, time: f32) -> Color {
+        // let mut first = true;
+        // let mut type_of_previous: Option<TransformType> = None;
+
+        // self.current.retain(|&t| {
+        //     if first {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             first = false;
+        //             type_of_previous = Some(t.ty);
+        //             return true;
+        //         }
+        //     }
+// 
+        //     if type_of_previous == Some(t.ty) {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             return true;
+        //         }
+        //     }
+// 
+        //     type_of_previous = None;
+// 
+        //     true
+        // });
+
+        let mut buffer_color = self.result;
+        self.current.iter().for_each(|cl| { buffer_color.with_c(cl.c, advancement(cl.start, cl.end, time, cl.e)); });
+        buffer_color
+    }
+}
+
 /// Returns the *point of advancement* of `time` on the `start` to `end` journey, with the `e` evolution function.
 /// The returned value is between 0.0 and 1.0, where 0.0 is the start and 1.0 is the end.
 fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
@@ -143,6 +217,15 @@ fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
 
     match e {
         Evolution::Linear => {
+            (time-start)/(end-start)
+        }
+        Evolution::EaseIn => {
+            (time-start)/(end-start)
+        }
+        Evolution::EaseOut => {
+            (time-start)/(end-start)
+        }
+        Evolution::EaseInOut => {
             (time-start)/(end-start)
         }
         _ => {

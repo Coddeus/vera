@@ -3,6 +3,9 @@
 pub enum Evolution {
     /// Constant speed from start to end.
     Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
 
     Unimplemented,
 }
@@ -52,4 +55,27 @@ pub enum Transformation {
     Orthographic(f32, f32, f32, f32, f32, f32),
     /// Projection: 
     Perspective(f32, f32, f32, f32, f32, f32),
+}
+
+// -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/// Data for the transformation of a single vertex or shape.
+/// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
+pub struct Cl {
+    /// The type & value of the transformation.
+    pub c: Colorization,
+    /// The speed evolution of the transformation.
+    pub e: Evolution,
+    /// The start time of the transformation.
+    pub start: f32,
+    /// The duration of the transformation.
+    pub end: f32,
+}
+
+/// The available transformations
+/// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.
+#[derive(Clone, Copy)]
+pub enum Colorization {
+    /// Changes the current color to this new rgba color.
+    ToColor(f32, f32, f32, f32),
 }

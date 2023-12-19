@@ -35,16 +35,6 @@ impl Mat4 {
         ]);
     }
 
-    /// Returns the linear interpolation between this matrix and the identity matrix, with the given *advancement* (between 0.0 and 1.0, where 0.0 is the identity matrix, and 1.0 is *self*).
-    pub fn interpolate_idmat(&self, advancement: f32) -> Mat4 {
-        Mat4([
-            self.0[0] * advancement + 1.0 * (1.0-advancement)   ,   self.0[1] * advancement                             ,   self.0[2] * advancement                             ,   self.0[3] * advancement                             ,
-            self.0[4] * advancement                             ,   self.0[5] * advancement + 1.0 * (1.0-advancement)   ,   self.0[6] * advancement                             ,   self.0[7] * advancement                             ,
-            self.0[8] * advancement                             ,   self.0[9] * advancement                             ,   self.0[10] * advancement + 1.0 * (1.0-advancement)  ,   self.0[11] * advancement                            ,
-            self.0[12] * advancement                            ,   self.0[13] * advancement                            ,   self.0[14] * advancement                            ,   self.0[15] * advancement + 1.0 * (1.0-advancement)  ,
-        ])
-    }
-
     /// Add a scale transformation to the Mat4, for each axis.
     /// The scale center is (0.0, 0.0, 0.0).
     pub fn scale(x_scale: f32, y_scale: f32, z_scale: f32) -> Self {

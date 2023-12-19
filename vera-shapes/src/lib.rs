@@ -18,12 +18,18 @@ pub static mut D_TRANSFORMATION_SPEED_EVOLUTION: Evolution = Evolution::Linear;
 pub static mut D_TRANSFORMATION_START_TIME: f32 = 0.0;
 /// Default behaviour: Transformation end time.
 pub static mut D_TRANSFORMATION_END_TIME: f32 = 2.0;
+/// Default behaviour: Colorization speed evolution.
+pub static mut D_COLORIZATION_SPEED_EVOLUTION: Evolution = Evolution::Linear;
+/// Default behaviour: Colorization start time.
+pub static mut D_COLORIZATION_START_TIME: f32 = 0.0;
+/// Default behaviour: Colorization end time.
+pub static mut D_COLORIZATION_END_TIME: f32 = 2.0;
 /// Default behaviour: which position to give vertices.
 pub static mut D_VERTEX_POSITION: [f32; 3] = [0.0, 0.0, 0.0];
 /// Default behaviour: which color to give vertices.
 pub static mut D_VERTEX_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
 /// Default behaviour: What transparency value to give vertices.
-pub static mut D_VERTEX_ALPHA: f32 = 0.8;
+pub static mut D_VERTEX_ALPHA: f32 = 1.0;
 
 /// Default view matrix
 pub static mut VIEW: f32 = 0.8;
