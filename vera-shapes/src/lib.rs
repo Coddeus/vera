@@ -14,16 +14,49 @@
 pub static mut D_RANDOM_VERTEX_COLOR: bool = true;
 /// Default behaviour: Transformation speed evolution.
 pub static mut D_TRANSFORMATION_SPEED_EVOLUTION: Evolution = Evolution::Linear;
+/// Default behaviour: Transformation start time.
+pub static mut D_TRANSFORMATION_START_TIME: f32 = 0.0;
+/// Default behaviour: Transformation end time.
+pub static mut D_TRANSFORMATION_END_TIME: f32 = 2.0;
+/// Default behaviour: Colorization speed evolution.
+pub static mut D_COLORIZATION_SPEED_EVOLUTION: Evolution = Evolution::Linear;
+/// Default behaviour: Colorization start time.
+pub static mut D_COLORIZATION_START_TIME: f32 = 0.0;
+/// Default behaviour: Colorization end time.
+pub static mut D_COLORIZATION_END_TIME: f32 = 2.0;
 /// Default behaviour: which position to give vertices.
 pub static mut D_VERTEX_POSITION: [f32; 3] = [0.0, 0.0, 0.0];
 /// Default behaviour: which color to give vertices.
 pub static mut D_VERTEX_COLOR: [f32; 3] = [0.0, 0.0, 0.0];
-/// Default behaviour: What transparency value.
-pub static mut D_VERTEX_ALPHA: f32 = 0.8;
+/// Default behaviour: What transparency value to give vertices.
+pub static mut D_VERTEX_ALPHA: f32 = 1.0;
 
+/// Default view matrix
+pub static mut VIEW: f32 = 0.8;
+
+/// A vertex, belonging to a model
 mod vertex;
 pub use vertex::*;
-mod shape;
-pub use shape::*;
+/// A model, something that is drawn
+mod model;
+pub use model::*;
+/// A view, representation of a camera
+mod view;
+pub use view::*;
+/// A projection, defined the viewing frustrum.
+mod projection;
+pub use projection::*;
+/// Transformations for vertices/models, views and projections.
 mod transform;
 pub use transform::*;
+
+/// The input of the Vera core. This is what you send when calling functions like `create()` or `reset()`.
+/// It contains everything that will be drawn and updated.
+pub struct Input {
+    /// All models, with their transformations
+    pub m: Vec<Model>,
+    /// The view, with its transformations
+    pub v: View,
+    /// The projection, with its transformations
+    pub p: Projection,
+}
