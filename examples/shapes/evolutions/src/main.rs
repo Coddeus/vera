@@ -16,6 +16,7 @@ fn main() {
 
 fn get() -> Input {
     Input {
+        meta: Default::default(),
         m: vec![
             circle(-0.8, Evolution::FastIn),
             circle(-0.4, Evolution::FastInOut),

@@ -16,6 +16,11 @@ fn main() {
 
 fn get() -> Input {
     Input {
+        meta: MetaInput {
+            bg: [0.1, 0.3, 0.5, 1.0],
+            start: 0.0,
+            end: 13.0,
+        },
         m: (0..100)
             .map(|n| 
                 Model::from_vertices(

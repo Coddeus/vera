@@ -53,10 +53,27 @@ pub use transform::*;
 /// The input of the Vera core. This is what you send when calling functions like `create()` or `reset()`.
 /// It contains everything that will be drawn and updated.
 pub struct Input {
+    /// Metadata for the animation
+    pub meta: MetaInput,
     /// All models, with their transformations
     pub m: Vec<Model>,
     /// The view, with its transformations
     pub v: View,
     /// The projection, with its transformations
     pub p: Projection,
+}
+
+pub struct MetaInput {
+    pub bg: [f32 ; 4],
+    pub start: f32,
+    pub end: f32,
+}
+impl Default for MetaInput {
+    fn default() -> Self {
+        MetaInput {
+            bg: [0.3, 0.3, 0.3, 1.0],
+            start: 0.0,
+            end: 5.0,
+        }
+    }
 }

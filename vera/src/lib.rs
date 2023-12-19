@@ -194,7 +194,10 @@ struct Vk {
     >,
     previous_drawing_fence_i: u32,
 
-    // -----
+
+    background_color: [f32; 4],
+    start_time: f32,
+    end_time: f32,
 }
 
 mod vs {
@@ -468,7 +471,8 @@ impl Vera {
             (entities_uniform_len, entities_uniform_data, entities_uniform_transformer), 
             (transform_vertex_data, transform_vertex_transformer), 
             (color_vertex_data, color_vertex_colorizer), 
-            (vertex_len, position_vertex_data)
+            (vertex_len, position_vertex_data),
+            (background_color, start_time, end_time)
         ) = from_input(input);
         // ---------------------------------------
 
@@ -1091,6 +1095,10 @@ impl Vera {
                 staging_color_vertex_buffer,
                 color_vertex_copy_command_buffer,
                 color_vertex_copy_fence,
+
+                background_color,
+                start_time,
+                end_time,
             },
         }
     }
@@ -1143,8 +1151,9 @@ impl Vera {
 }
 
 /// Treats `input`, and returns related data, transformers and lengths.
-fn from_input(input: Input) -> ((GeneralData, (Transformer, Transformer)), (u64, Vec<EntityData>, Vec<Transformer>), (Vec<TransformVertexData>, Vec<Transformer>), (Vec<ColorVertexData>, Vec<Colorizer>), (u64, Vec<VertexData>))  {
+fn from_input(input: Input) -> ((GeneralData, (Transformer, Transformer)), (u64, Vec<EntityData>, Vec<Transformer>), (Vec<TransformVertexData>, Vec<Transformer>), (Vec<ColorVertexData>, Vec<Colorizer>), (u64, Vec<VertexData>), ([f32; 4], f32, f32))  {
     let Input {
+        meta,
         m,
         v: View {
             t: view_t,
@@ -1184,7 +1193,8 @@ fn from_input(input: Input) -> ((GeneralData, (Transformer, Transformer)), (u64,
         (entities_uniform_len, entities_uniform_data, entities_uniform_transformer), 
         (transform_vertex_data, transform_vertex_transformer), 
         (color_vertex_data, color_vertex_colorizer), 
-        (vertex_len, position_vertex_data)
+        (vertex_len, position_vertex_data),
+        (meta.bg, meta.start, meta.end)
     )
 }
 
@@ -1196,7 +1206,8 @@ impl Vk {
             (self.entities_uniform_len, self.entities_uniform_data, self.entities_uniform_transformer), 
             (self.transform_vertex_data, self.transform_vertex_transformer), 
             (self.color_vertex_data, self.color_vertex_colorizer), 
-            (self.vertex_len, self.position_vertex_data)
+            (self.vertex_len, self.position_vertex_data),
+            (self.background_color, self.start_time, self.end_time)
         ) = from_input(input);
 
         self.recreate_vertex_buffer();
@@ -1707,7 +1718,7 @@ impl Vk {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([0.3, 0.3, 0.3, 1.0].into())], // custom evolving background color
+                    clear_values: vec![Some(self.background_color.into())], // custom evolving background color
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
                 },
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
@@ -1792,11 +1803,11 @@ impl Vk {
                 self.recreate_swapchain = true;
             }
             Event::MainEventsCleared => {
-                self.time = start.elapsed().as_secs_f32();
+                self.time = start.elapsed().as_secs_f32() + self.start_time;
                 // if elements.ended() {
                 //     *control_flow = ControlFlow::ExitWithCode(0);
                 // }
-                if self.time > 15.0 {
+                if self.time > self.end_time {
                     if max_elapsed {
                         max_elapsed = false;
                         self.show_count += 1;

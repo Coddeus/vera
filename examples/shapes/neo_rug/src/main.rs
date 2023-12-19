@@ -14,6 +14,7 @@ fn main() {
 
 fn get() -> Input {
     Input {
+        meta: Default::default(),
         m: (0..100)
         .into_iter()
         .map(|n| {
