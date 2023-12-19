@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use vera_shapes::{Transformation, Tf, Evolution, Cl, Colorization};
 use crate::{Mat4, Color};
 
@@ -215,22 +217,36 @@ fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
         return 1.0
     }
 
+    let init: f32 = (time-start)/(end-start);
     match e {
         Evolution::Linear => {
-            (time-start)/(end-start)
+            init
         }
-        Evolution::EaseIn => {
-            (time-start)/(end-start)
+        Evolution::FastIn => {
+            (init * PI / 2.0).sin()
         }
-        Evolution::EaseOut => {
-            (time-start)/(end-start)
+        Evolution::SlowOut => {
+            (init * PI / 2.0).sin()
         }
-        Evolution::EaseInOut => {
-            (time-start)/(end-start)
+        Evolution::FastOut => {
+            1.0 - (init * PI / 2.0).cos()
         }
-        _ => {
-            println!("Unknown evolution, defaulting to Linear");
-            (time-start)/(end-start)
+        Evolution::SlowIn => {
+            1.0 - (init * PI / 2.0).cos()
+        }
+        Evolution::FastMiddle => {
+            (((init - 0.5) * PI).sin() + 1.0) / 2.0
+        }
+        Evolution::SlowInOut => {
+            (((init - 0.5) * PI).sin() + 1.0) / 2.0
+        }
+        Evolution::FastInOut => {
+            if init < 0.5 { (init * PI).sin() / 2.0 }
+            else { 0.5 + (1.0 - (init * PI).sin()) / 2.0 }
+        }
+        Evolution::SlowMiddle => {
+            if init < 0.5 { (init * PI).sin() / 2.0 }
+            else { 0.5 + (1.0 - (init * PI).sin()) / 2.0 }
         }
     }
 }

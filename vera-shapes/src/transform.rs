@@ -3,11 +3,22 @@
 pub enum Evolution {
     /// Constant speed from start to end.
     Linear,
-    EaseIn,
-    EaseOut,
-    EaseInOut,
-
-    Unimplemented,
+    /// Fast at the beginning, slow at the end.
+    FastIn,
+    /// Fast at the beginning, slow at the end.
+    SlowOut,
+    /// Slow at the beginning, fast at the end.
+    FastOut,
+    /// Slow at the beginning, fast at the end.
+    SlowIn,
+    /// Slow at ends, fast in middle.
+    FastMiddle,
+    /// Slow at ends, fast in middle.
+    SlowInOut,
+    /// Fast at ends, slow in middle.
+    FastInOut,
+    /// Fast at ends, slow in middle.
+    SlowMiddle,
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
