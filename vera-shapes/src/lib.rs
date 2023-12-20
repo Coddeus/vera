@@ -6,7 +6,7 @@
 //!
 //! ## Don't
 //! DO NOT modify/read these global variables simutaneously on different threads.  
-//! Most likely, don't bother creating several threads at all. The vera core crate will do the performance job.
+//! Most likely, don't bother creating several threads at all. The Vera core crate will do the performance job.
 //! In case you really want multithreading: some function modify/read these variables, but aren't `unsafe` to simplify scripting. Check the docs of the functions you use to know which ones you should be careful with.
 
 /// Default behaviour: whether or not to choose random colors for each vertex.
@@ -60,6 +60,7 @@ pub struct Input {
     /// The view, with its transformations
     pub v: View,
     /// The projection, with its transformations
+    /// By default, the visible 3D frustrum corresponds to Transformation::Orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, -1.0)
     pub p: Projection,
 }
 

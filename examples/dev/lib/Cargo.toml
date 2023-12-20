@@ -8,3 +8,4 @@ crate-type = ["rlib", "dylib"]
 
 [dependencies]
 vera-shapes = { path = "../../../vera-shapes" }
+fastrand = "2.0.1"

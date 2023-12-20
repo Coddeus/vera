@@ -25,6 +25,11 @@ impl Mat4 {
         self.0.as_ptr()
     }
 
+    /// Adds `mat` to `self`
+    pub fn add(&mut self, mat: Mat4) {
+        self.0.iter_mut().zip(mat.0.iter()).for_each(|(mut s, m)| *s+=m);
+    }
+
     /// Multiplies this Mat4 (`self`) with another one (`mat`), further from the initial vertex position vector, so the resulting transformation will be the chaining of both matrices' transformations: first `self`, then `mat`.
     pub fn mult(&mut self, mat: Mat4) {
         *self = Mat4([
@@ -33,6 +38,16 @@ impl Mat4 {
             mat.0[8]  * self.0[0] + mat.0[9]  * self.0[4] + mat.0[10] * self.0[8] + mat.0[11] * self.0[12]  , mat.0[8]  * self.0[1] + mat.0[9]  * self.0[5] + mat.0[10] * self.0[9] + mat.0[11] * self.0[13]  , mat.0[8] * self.0[2]  + mat.0[9] * self.0[6]  + mat.0[10] * self.0[10] + mat.0[11] * self.0[14]  , mat.0[8] * self.0[3]  + mat.0[9] * self.0[7]  + mat.0[10] * self.0[11] + mat.0[11] * self.0[15], 
             mat.0[12] * self.0[0] + mat.0[13] * self.0[4] + mat.0[14] * self.0[8] + mat.0[15] * self.0[12]  , mat.0[12] * self.0[1] + mat.0[13] * self.0[5] + mat.0[14] * self.0[9] + mat.0[15] * self.0[13]  , mat.0[12] * self.0[2] + mat.0[13] * self.0[6] + mat.0[14] * self.0[10] + mat.0[15] * self.0[14]  , mat.0[12] * self.0[3] + mat.0[13] * self.0[7] + mat.0[14] * self.0[11] + mat.0[15] * self.0[15], 
         ]);
+    }
+
+    /// Divides self by a float, `scalar`.
+    pub fn div(&mut self, scalar: f32) {
+        self.0.iter_mut().for_each(|s| *s/=scalar);
+    }
+
+    /// Interpolates `self` with `mat` given the advancement (0.0 to 1.0)
+    pub fn interpolate(&mut self, mat: Mat4, advancement: f32) {
+        self.0.iter_mut().zip(mat.0.iter()).for_each(|(mut s, m)| *s = (1.0-advancement) * *s + advancement * m);
     }
 
     /// Add a scale transformation to the Mat4, for each axis.
@@ -89,8 +104,7 @@ impl Mat4 {
         ])
     }
 
-    /// For view matrix. Moves the "camera" to (eye_x, eye_y, eye_z), looking at (target_x, target_y, target_z), with a "roll" roll angle, in radians.
-    /// Replaces any earlier transformation to this Mat4.
+    /// For view matrix. Moves the "camera" to (eye_x, eye_y, eye_z), looking at (target_x, target_y, target_z), with athe (up_x, up_y, up_z) up vector.
     pub fn lookat(eye_x: f32, eye_y: f32, eye_z: f32, target_x: f32, target_y: f32, target_z: f32, mut up_x: f32, mut up_y: f32, mut up_z: f32,) -> Self {
         // Forward vector
         let (mut f_x, mut f_y, mut f_z) = (eye_x-target_x, eye_y-target_y, eye_z-target_z);
@@ -119,7 +133,6 @@ impl Mat4 {
 
     /// For projection matrix. Defines an orthographic projection matrix with the given [left-right] - [top-bottom] - [near-far] frustrum.
     /// The default Frustrum is set to left-right: [-1.0, 1.0], top-bottom: [-1.0, 1.0], near-far: [-1.0, 1.0]
-    /// Replaces any earlier transformation to this Mat4.
     pub fn project_orthographic(l: f32, r: f32, b: f32, t: f32, n: f32, f: f32) -> Self {
         Mat4([
             2.0 / (r - l)   ,   0.0                 ,   0.0                 ,   -(r + l) / (r - l)  ,
@@ -131,7 +144,6 @@ impl Mat4 {
 
     /// For projection matrix. Defines an perspective projection matrix with the given [left-right] - [top-bottom] - [near-far] frustrum.
     /// The default Frustrum is set to left-right: [-1.0, 1.0], top-bottom: [-1.0, 1.0], near-far: [-1.0, 1.0]
-    /// Replaces any earlier transformation to this Mat4.
     pub fn project_perspective(l: f32, r: f32, b: f32, t: f32, n: f32, f: f32) -> Self {
         Mat4([
             2.0 * n/(r - l) ,   0.0                 ,   (r + l)/(r - l)     ,   0.0                     ,

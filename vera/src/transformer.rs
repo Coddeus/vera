@@ -86,8 +86,8 @@ impl Transformer {
     // The storing order cannot change, except if consecutive transformations have the same type.
     // Faster reset in a loop-like action ?
 
-    /// Updates the transformer, and returns the transformations matrix of the corresponding vertex for `time`.
-    pub(crate) fn update(&mut self, time: f32) -> Mat4 {
+    /// Updates the transformer for vertex/model transformations (multiplies all transformations), and returns the transformations matrix of the corresponding vertex/model for `time`.
+    pub(crate) fn update_vm(&mut self, time: f32) -> Mat4 {
         // let mut first = true;
         // let mut type_of_previous: Option<TransformType> = None;
 
@@ -120,7 +120,55 @@ impl Transformer {
         // });
 
         let mut buffer_matrix = self.result;
-        self.current.iter().for_each(|tf| { buffer_matrix.mult(Mat4::from_t(tf.t, advancement(tf.start, tf.end, time, tf.e))); });
+        self.current.iter().for_each(|tf| {
+            let adv: f32 = advancement(tf.start, tf.end, time, tf.e);
+            if adv>0.0 {
+                buffer_matrix.mult(Mat4::from_t(tf.t, adv));
+            }
+        });
+        buffer_matrix
+    }
+
+    /// Updates the transformer for view/projection transformations (interpolates every transformation into one), and returns the transformations matrix of the corresponding view/projection for `time`.
+    pub(crate) fn update_vp(&mut self, time: f32) -> Mat4 {
+        // let mut first = true;
+        // let mut type_of_previous: Option<TransformType> = None;
+
+        // self.current.retain(|&t| {
+        //     if first {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             first = false;
+        //             type_of_previous = Some(t.ty);
+        //             return true;
+        //         }
+        //     }
+// 
+        //     if type_of_previous == Some(t.ty) {
+        //         if t.end < time {
+        //             self.result.mult(t.mat);
+        //             self.previous.push(t);
+        //             return false;
+        //         } else {
+        //             return true;
+        //         }
+        //     }
+// 
+        //     type_of_previous = None;
+// 
+        //     true
+        // });
+
+        let mut buffer_matrix = self.result;
+        self.current.iter().for_each(|tf| {
+            let adv: f32 = advancement(tf.start, tf.end, time, tf.e);
+            if adv>0.0 {
+                buffer_matrix.interpolate(Mat4::from_t(tf.t, 1.0), adv);
+            }
+        });
         buffer_matrix
     }
 }

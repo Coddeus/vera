@@ -18,6 +18,7 @@ pub use transformer::*;
 
 use vera_shapes::{Input, Model, Tf, Vertex as ModelVertex, View, Projection};
 use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::pipeline::graphics::depth_stencil::{DepthStencilState, DepthState};
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -43,12 +44,13 @@ use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageUsage};
+use vulkano::image::{Image, ImageUsage, ImageCreateInfo, ImageType};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::memory::allocator::{
     AllocationCreateInfo, FreeListAllocator, GenericMemoryAllocator, MemoryTypeFilter,
     StandardMemoryAllocator,
 };
+use vulkano::format::Format;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
@@ -379,6 +381,16 @@ impl Vera {
         .expect("failed to create device");
         let queue = queues.next().unwrap();
 
+        // Allocators
+        // ----------
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
+        let descriptor_set_allocator =
+            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+
+        // ----------
+
         let (swapchain, images) = {
             let caps = physical_device
                 .surface_capabilities(&surface, Default::default())
@@ -416,11 +428,34 @@ impl Vera {
                     load_op: Clear,
                     store_op: Store,
                 },
+                depth_stencil: {
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth_stencil: {depth_stencil},
             },
+        )
+        .unwrap();
+    
+
+        let depth_attachment = ImageView::new_default(
+            Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent: images[0].extent(),
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -431,7 +466,7 @@ impl Vera {
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![view],
+                        attachments: vec![view, depth_attachment.clone()],
                         ..Default::default()
                     },
                 )
@@ -440,16 +475,6 @@ impl Vera {
             .collect::<Vec<Arc<Framebuffer>>>();
 
         // ---------------------------------------------------------------------------------------------------------------------------------
-
-        // Allocators
-        // ----------
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), Default::default());
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-
-        // ----------
 
         // Max buffer sizes
         // ----------------
@@ -913,6 +938,10 @@ impl Vera {
                         },
                     )),
                     subpass: Some(subpass.into()),
+                    depth_stencil_state: Some(DepthStencilState {
+                        depth: Some(DepthState::simple()),
+                        ..Default::default()
+                    }),
                     ..GraphicsPipelineCreateInfo::layout(pipeline_layout)
                 },
             )
@@ -1501,7 +1530,7 @@ impl Vk {
     fn update_transform_vertex_buffer(&mut self) {
         for (o, i) in self.staging_transform_vertex_buffer.write().unwrap().iter_mut()
             .zip(self.transform_vertex_transformer.iter_mut()) {
-                let mat = i.update(self.time).0;
+                let mat = i.update_vm(self.time).0;
                 ((*o).vertex_matrix0, (*o).vertex_matrix1, (*o).vertex_matrix2, (*o).vertex_matrix3) = (
                     [mat[0], mat[1], mat[2], mat[3]],
                     [mat[4], mat[5], mat[6], mat[7]],
@@ -1519,8 +1548,8 @@ impl Vk {
             let mut buf = self.general_staging_uniform_buffer.write().unwrap();
             buf.time = self.time;
             buf.resolution = [image_extent[0] as f32, image_extent[1] as f32];
-            buf.view_matrix = self.general_uniform_transformer.0.update(self.time).0;
-            buf.projection_matrix = self.general_uniform_transformer.1.update(self.time).0;
+            buf.view_matrix = self.general_uniform_transformer.0.update_vp(self.time).0;
+            buf.projection_matrix = self.general_uniform_transformer.1.update_vp(self.time).0;
         }
         
         self.copy_general_uniform_buffer();
@@ -1529,7 +1558,7 @@ impl Vk {
     fn update_entities_uniform_buffer(&mut self) {
         for (o, i) in self.entities_staging_uniform_buffer.write().unwrap().iter_mut()
             .zip(self.entities_uniform_transformer.iter_mut()) {
-            (*o).model_matrix = i.update(self.time).0;
+            (*o).model_matrix = i.update_vm(self.time).0;
         }
 
         self.copy_entities_uniform_buffer();
@@ -1622,6 +1651,23 @@ impl Vk {
                 .expect("failed to recreate swapchain");
 
             let extent = self.images[0].extent();
+            
+
+            let depth_attachment = ImageView::new_default(
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::D16_UNORM,
+                        extent: self.images[0].extent(),
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
 
             self.framebuffers = self
                 .images
@@ -1631,7 +1677,7 @@ impl Vk {
                     Framebuffer::new(
                         self.render_pass.clone(),
                         FramebufferCreateInfo {
-                            attachments: vec![view],
+                            attachments: vec![view, depth_attachment.clone()],
                             ..Default::default()
                         },
                     )
@@ -1687,6 +1733,10 @@ impl Vk {
                             },
                         )),
                         subpass: Some(subpass.into()),
+                        depth_stencil_state: Some(DepthStencilState {
+                            depth: Some(DepthState::simple()),
+                            ..Default::default()
+                        }),
                         ..GraphicsPipelineCreateInfo::layout(layout)
                     },
                 )
@@ -1718,7 +1768,10 @@ impl Vk {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some(self.background_color.into())], // custom evolving background color
+                    clear_values: vec![
+                        Some(self.background_color.into()),
+                        Some(1.0.into())
+                    ],
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_i as usize].clone())
                 },
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },

@@ -9,5 +9,5 @@ cargo watch -w lib -x 'build -p lib'
 cargo run
 ```
 
-Then, modifying the get() function in `lib/src/lib.rs` will modify the render when the animation restarts.
-src/main.rs is the intermediate between Vera and the hot lib.
+Then, modifying the get() function in `lib/src/lib.rs` will modify the render when the animation restarts.  
+src/main.rs is an intermediate. It sends the `Input` returned from the hot lib to vera.
