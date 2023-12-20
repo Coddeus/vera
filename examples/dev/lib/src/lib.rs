@@ -1,13 +1,11 @@
-use std::{vec, f32::consts::PI};
 use fastrand;
 
 use vera_shapes::{
-    Input, View, Projection, Model, Triangle, Vertex, Transformation, 
-    D_RANDOM_VERTEX_COLOR, D_VERTEX_ALPHA, D_VERTEX_COLOR, Colorization, MetaInput, Evolution,
+    Input, View, Projection, Model, Vertex, Transformation, MetaInput, Evolution,
 };
 
 #[no_mangle]
-fn get() -> Input {
+fn get() -> Input { // The orbit example
     Input {
         meta: MetaInput {
             bg: [0.0, 0.0, 0.0, 1.0],

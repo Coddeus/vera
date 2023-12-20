@@ -1145,7 +1145,7 @@ impl Vera {
     /// - Returns `false` if the window was closed while showing.
     /// - Returns true otherwise.
     pub fn show(&mut self) -> bool {
-        match self.vk.show(&mut self.event_loop, (0, 0)) {
+        match self.vk.show(&mut self.event_loop) {
             0 => {
                 // Successfully finished.
                 true
@@ -1163,7 +1163,7 @@ impl Vera {
     }
 
     pub fn save(&mut self, width: u32, height: u32) {
-        match self.vk.show(&mut self.event_loop, (width, height)) {
+        match self.vk.show(&mut self.event_loop) { // , (width, height)
             0 => {
                 // Successfully finished
                 println!("✨ Saved video!");
@@ -1837,7 +1837,7 @@ impl Vk {
     fn show(
         &mut self,
         event_loop: &mut EventLoop<()>,
-        save: (u32, u32), /*, &elements: Elements */
+        // save: (u32, u32),
     ) -> i32 {
         println!("♻ --- {}: Showing with updated data.", self.show_count);
         let start = Instant::now();
@@ -1875,8 +1875,8 @@ impl Vk {
         })
     }
 
-    /// Encodes a frame to the output video, for saving.
-    fn encode(&mut self) {
-        unimplemented!("Cannot encode yet!");
-    }
+    // /// Encodes a frame to the output video, for saving.
+    // fn encode(&mut self) {
+    //     unimplemented!("Cannot encode yet!");
+    // }
 }

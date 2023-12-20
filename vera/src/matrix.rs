@@ -27,7 +27,7 @@ impl Mat4 {
 
     /// Adds `mat` to `self`
     pub fn add(&mut self, mat: Mat4) {
-        self.0.iter_mut().zip(mat.0.iter()).for_each(|(mut s, m)| *s+=m);
+        self.0.iter_mut().zip(mat.0.iter()).for_each(|(s, m)| *s+=m);
     }
 
     /// Multiplies this Mat4 (`self`) with another one (`mat`), further from the initial vertex position vector, so the resulting transformation will be the chaining of both matrices' transformations: first `self`, then `mat`.
@@ -47,7 +47,7 @@ impl Mat4 {
 
     /// Interpolates `self` with `mat` given the advancement (0.0 to 1.0)
     pub fn interpolate(&mut self, mat: Mat4, advancement: f32) {
-        self.0.iter_mut().zip(mat.0.iter()).for_each(|(mut s, m)| *s = (1.0-advancement) * *s + advancement * m);
+        self.0.iter_mut().zip(mat.0.iter()).for_each(|(s, m)| *s = (1.0-advancement) * *s + advancement * m);
     }
 
     /// Add a scale transformation to the Mat4, for each axis.

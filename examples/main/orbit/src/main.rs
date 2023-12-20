@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use vera::*;
 use vera_shapes::*;
 use fastrand;
