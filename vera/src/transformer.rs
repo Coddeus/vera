@@ -51,9 +51,9 @@ impl Mat4 {
 
             Transformation::Lookat(eye_x, eye_y, eye_z, target_x, target_y, target_z, up_x, up_y, up_z) => Self::lookat(eye_x * advancement, eye_y * advancement, eye_z * advancement, target_x * advancement, target_y * advancement, target_z * advancement, up_x * advancement, up_y * advancement, up_z * advancement),
 
-            Transformation::Orthographic(l, r, b, t, n, f) => Self::project_orthographic(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
+            // Transformation::Orthographic(l, r, b, t, n, f) => Self::project_orthographic(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
             Transformation::Perspective(l, r, b, t, n, f) => Self::project_perspective(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
-            _ => Mat4::new(),
+            _ => { println!("Transformation not implementing, ignoring."); Mat4::new() },
         }
     }
 }

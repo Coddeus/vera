@@ -326,7 +326,7 @@ impl Vera {
                 })
                 .with_resizable(true)
                 .with_title("Vera")
-                .with_transparent(true)
+                .with_transparent(false)
                 .build(&event_loop)
                 .unwrap(),
         );
