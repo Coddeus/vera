@@ -10,7 +10,7 @@ This repository is split in 2 crates, enabling faster hot-reload.
 
 ## Features
 - Draw anything out of triangles, by creating models from vertices, or by merging together several models you have already created.
-- Send metadata for  
+- Send metadata for the background color, start time, and end time of the animation.
 ---
 - Choose the default color and position of vertices
 - Modify the color and position of each vertex, independently.
