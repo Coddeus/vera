@@ -53,7 +53,7 @@ impl Mat4 {
 
             // Transformation::Orthographic(l, r, b, t, n, f) => Self::project_orthographic(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
             Transformation::Perspective(l, r, b, t, n, f) => Self::project_perspective(l * advancement, r * advancement, b * advancement, t * advancement, n * advancement, f * advancement),
-            _ => { println!("Transformation not implementing, ignoring."); Mat4::new() },
+            _ => { println!("Transformation not implemented, ignoring."); Mat4::new() },
         }
     }
 }
