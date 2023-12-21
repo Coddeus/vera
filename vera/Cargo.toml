@@ -8,7 +8,7 @@ description = "Vulkan Engine in Rust for Animation"
 documentation = "https://docs.rs/vera"
 repository = "https://github.com/Coddeus/vera"
 readme = "README.md"
-keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
+keywords = ["animation", "vulkan", "videos", "graphics", "renderer", "interface", "drawing"]
 categories = ["graphics", "multimedia::video", "rendering::engine"]
 
 [dependencies]
