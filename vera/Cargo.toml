@@ -1,6 +1,6 @@
 [package]
 name = "vera"
-version = "0.2.0"
+version = "0.3.0"
 # author = "Coddeus"
 edition = "2021"
 license = "GPL-3.0-only"
@@ -12,16 +12,11 @@ keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
 categories = ["graphics", "multimedia::video", "rendering::engine"]
 
 [dependencies]
-vulkano = "0.34.0"
-vulkano-shaders = "0.34.0"
-vulkano-win = "0.34.0"
-vulkano-macros = "0.34.0"
-winit = "0.28.7"
-vera-shapes = { version = "0.2.0", path = "../vera-shapes" }
-
+# Least possible
+fastrand = "^2.0"
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 [profile.release]
 opt-level = 3

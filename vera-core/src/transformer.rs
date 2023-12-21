@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use vera_shapes::{Transformation, Tf, Evolution, Cl, Colorization};
+use vera::{Transformation, Tf, Evolution, Cl, Colorization};
 use crate::{Mat4, Color};
 
 // /// Lighter enum for transformation types.

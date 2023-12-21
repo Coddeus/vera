@@ -1,8 +1,8 @@
-use vera::*;
+use vera_core::*;
 
 #[hot_lib_reloader::hot_module(dylib = "lib")]
 mod hot_lib {
-    use vera_shapes::Input;
+    use vera::Input;
     // Path form the project root
 
     #[hot_function]

@@ -6,7 +6,7 @@ Development video series: [YouTube](https://www.youtube.com/playlist?list=PLFBSA
 
 This repository is split in 2 crates, enabling faster hot-reload.
 - `vera` for the (heavy) core engine,
-- `vera-shapes` for shapes and transformations (should be the only one imported in the hot-reloaded library),
+- `vera` for shapes and transformations (should be the only one imported in the hot-reloaded library),
 
 ## Features
 - Draw anything out of triangles, by creating models from vertices, or by merging together several models you have already created.

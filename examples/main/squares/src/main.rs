@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use vera::*;
-use vera_shapes::*;
+use vera_core::*;
 
 fn main() {
     let mut v = Vera::create(get());

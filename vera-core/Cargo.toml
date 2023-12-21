@@ -1,22 +1,27 @@
 [package]
-name = "vera-shapes"
-version = "0.2.0"
+name = "vera-core"
+version = "0.3.0"
 # author = "Coddeus"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Vulkan Engine in Rust for Animation"
-documentation = "https://docs.rs/vera-shapes"
+documentation = "https://docs.rs/vera-core"
 repository = "https://github.com/Coddeus/vera"
 readme = "README.md"
 keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
 categories = ["graphics", "multimedia::video", "rendering::engine"]
 
 [dependencies]
-# Least possible
-fastrand = "^2.0"
+vulkano = "0.34.0"
+vulkano-shaders = "0.34.0"
+vulkano-win = "0.34.0"
+vulkano-macros = "0.34.0"
+winit = "0.28.7"
+vera = { path = "../vera" }
+
 
 [profile.dev]
-opt-level = 0
+opt-level = 1
 
 [profile.release]
 opt-level = 3

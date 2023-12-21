@@ -10,5 +10,5 @@ edition = "2021"
 [dependencies]
 lib = { path = "./lib" }
 hot-lib-reloader = "^0.6"
+vera-core = { path = "../../vera-core" }
 vera = { path = "../../vera" }
-vera-shapes = { path = "../../vera-shapes" }

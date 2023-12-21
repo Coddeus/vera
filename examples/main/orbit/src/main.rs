@@ -1,5 +1,5 @@
 use vera::*;
-use vera_shapes::*;
+use vera_core::*;
 use fastrand;
 
 fn main() {

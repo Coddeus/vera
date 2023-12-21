@@ -1,18 +1,18 @@
 [workspace]
 members = [
     "vera",
-    "vera-shapes",
+    "vera-core",
     "examples/main/*",
 ]
 resolver = "2"
 
-[workspace.dependencies.vera]
+[workspace.dependencies.vera-core]
 version = "0.2.0"
-path = "vera"
+path = "vera-core"
 
-[workspace.dependencies.vera-shapes]
-version = "0.2.0"
-path = "vera-shapes"
+[workspace.dependencies.vera]
+version = "0.3.0"
+path = "vera"
 
 
 [profile.dev]

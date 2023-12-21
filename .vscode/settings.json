@@ -2,8 +2,8 @@
   "rust-analyzer.linkedProjects": [
     ".\\examples\\dev\\lib\\Cargo.toml",
     ".\\examples\\dev\\Cargo.toml",
-    ".\\vera-shapes\\Cargo.toml",
+    ".\\vera\\Cargo.toml",
     ".\\vera\\Cargo.toml"
   ],
-  "workbench.colorTheme": "Night Owl"
+  "workbench.colorTheme": "Material Theme Palenight"
 }

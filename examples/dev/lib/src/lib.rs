@@ -1,6 +1,6 @@
 use fastrand;
 
-use vera_shapes::{
+use vera::{
     Input, View, Projection, Model, Vertex, Transformation, MetaInput, Evolution,
 };
 
