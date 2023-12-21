@@ -5,8 +5,8 @@ In early development.
 Development video series: [YouTube](https://www.youtube.com/playlist?list=PLFBSAg3dVe4z5HxaZmOH0gaojQH4tLEgF)
 
 This repository is split in 2 crates, enabling faster hot-reload.
-- `vera` for the (heavy) core engine,
-- `vera` for shapes and transformations (should be the only one imported in the hot-reloaded library),
+- `vera-core` for the (heavy) core engine ([crates.io](https://crates.io/crates/vera-core)),
+- `vera` for shapes and transformations (should be the only one imported in the hot-reloaded library) ([crates.io](https://crates.io/crates/vera)),
 
 ## Features
 - Draw anything out of triangles, by creating models from vertices, or by merging together several models you have already created.
