@@ -247,17 +247,17 @@ mod cs {
 
             layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-            struct Vertex {
-                vec4 position;
-                vec4 color;
-                uint entity_id; // Index in t.d
-            };
             struct VSInput {
                 vec4 position;
                 vec4 color;
             };
+            struct BaseVertex {
+                vec4 position;
+                vec4 color;
+                uint entity_id; // Index in t.d
+            };
             struct Entity {
-                mat4 model_matrix;
+                uint entity_id; // Non-Zero
                 uint parent_id; // Index in t.d. 0 if no parent
             };
             struct MatrixTransformation {
@@ -267,26 +267,26 @@ mod cs {
                 float end;
                 uint evolution;
             };
-            struct MatrixTransformer {
-                mat4 current; // The current resulting matrix, acts a pre-result cache.
-                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
-            };
             struct ColorTransformation {
                 uint ty; // The type of color transformation
-                vec4 v; // The values of this transformation, interpreted depending on the type.
+                mat3 v; // The values of this transformation, interpreted depending on the type.
                 float start;
                 float end;
                 uint evolution;
             };
+            struct MatrixTransformer {
+                mat4 current; // The current resulting matrix, acts a pre-result cache.
+                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
+            };
             struct ColorTransformer {
-                mat4 current; // The current resulting color, acts a pre-output cache.
+                vec4 current; // The current resulting color, acts a pre-output cache.
                 uvec2 range; // The index range of the color transformations of this transformer inside `c`.
             };
 
             // Precalculated shared variables
 
             layout(push_constant) uniform Shared {
-                mat4 vpr_matrix; // View + projection + resolution (unstretching, scaling) matrix
+                mat4 vpr_matrix; // View + projection + resolution (unstretching => scaling) matrix
                 float time;
             } s;
 
@@ -296,7 +296,7 @@ mod cs {
                 VSInput d[]; // 'd' for 'Data'.
             } ov;
             layout(set = 0, binding = 1) buffer InputVertices {
-                Vertex d[]; // 'd' for 'Data'.
+                BaseVertex d[]; // 'd' for 'Data'.
             } iv;
 
             // Transformations data
@@ -305,19 +305,23 @@ mod cs {
             layout(set = 0, binding = 2) buffer MatrixTransformers {
                 MatrixTransformer d[];
             } tf;
-            layout(set = 0, binding = 3) buffer MatrixTransformations {
-                MatrixTransformation d[];
-            } t;
-            // Per-vertex transformers
-            layout(set = 0, binding = 4) buffer ColorTransformers {
+            // Indices: per-vertex transformers, then per-model transformers
+            layout(set = 0, binding = 3) buffer ColorTransformers {
                 ColorTransformer d[];
             } cf;
+            layout(set = 0, binding = 4) buffer MatrixTransformations {
+                MatrixTransformation d[];
+            } t;
             layout(set = 0, binding = 5) buffer ColorTransformations {
                 ColorTransformation d[];
             } c;
 
             void main() {
+                // Model coloring ?
+                // -> Apply color transformations from parent model to model to vertex
+
                 ov.d[gl_GlobalInvocationID.x].position = iv.d[gl_GlobalInvocationID.x].position;
+                ov.d[gl_GlobalInvocationID.x].color = iv.d[gl_GlobalInvocationID.x].color;
             }
         ",
     }
