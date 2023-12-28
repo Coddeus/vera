@@ -3,7 +3,7 @@ members = [
     "vera",
     "vera-core",
     "examples/main/*",
-]
+    ]
 resolver = "2"
 
 [workspace.dependencies.vera-core]

@@ -7,17 +7,20 @@ use crate::{
 /// A model (a model is a shape).
 /// 1 model = 1 entity.  
 /// This is what `fn new()` of specific models return.  
+/// - `models` are the models contained inside of this one, each group of three `Vertex` forming a triangle.
 /// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle.
 /// - `t` are the runtime transformations of the model.
 pub struct Model {
+    pub models: Vec<Model>,
     pub vertices: Vec<Vertex>,
     pub t: Vec<Tf>,
 }
 
 impl Model {
     /// Merges several models into one single entity, with empty transformations.
-    pub fn from_merge(models: Vec<Model>) -> Self {
+    pub fn from_vm(vertices: Vec<Vertex>, models: Vec<Model>) -> Self {
         Self {
+            models: vec![],
             vertices: models
                 .into_iter()
                 .flat_map(move |model| model.vertices.into_iter())
@@ -25,10 +28,19 @@ impl Model {
             t: vec![],
         }
     }
+    /// Merges several models into one single entity, with empty transformations.
+    pub fn from_models(models: Vec<Model>) -> Self {
+        Self {
+            models,
+            vertices: vec![],
+            t: vec![],
+        }
+    }
     /// Creates a single entity from the given vertices, with empty transformations.
     /// The number of vertices should (most likely) be a multiple of 3.
     pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
         Self {
+            models: vec![],
             vertices,
             t: vec![],
         }

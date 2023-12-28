@@ -270,29 +270,16 @@ fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
         Evolution::Linear => {
             init
         }
-        Evolution::FastIn => {
+        Evolution::FastIn | Evolution::SlowOut => {
             (init * PI / 2.0).sin()
         }
-        Evolution::SlowOut => {
-            (init * PI / 2.0).sin()
-        }
-        Evolution::FastOut => {
+        Evolution::FastOut | Evolution::SlowIn => {
             1.0 - (init * PI / 2.0).cos()
         }
-        Evolution::SlowIn => {
-            1.0 - (init * PI / 2.0).cos()
-        }
-        Evolution::FastMiddle => {
+        Evolution::FastMiddle | Evolution::SlowInOut => {
             (((init - 0.5) * PI).sin() + 1.0) / 2.0
         }
-        Evolution::SlowInOut => {
-            (((init - 0.5) * PI).sin() + 1.0) / 2.0
-        }
-        Evolution::FastInOut => {
-            if init < 0.5 { (init * PI).sin() / 2.0 }
-            else { 0.5 + (1.0 - (init * PI).sin()) / 2.0 }
-        }
-        Evolution::SlowMiddle => {
+        Evolution::FastInOut | Evolution::SlowMiddle => {
             if init < 0.5 { (init * PI).sin() / 2.0 }
             else { 0.5 + (1.0 - (init * PI).sin()) / 2.0 }
         }

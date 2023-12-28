@@ -202,54 +202,21 @@ struct Vk {
     end_time: f32,
 }
 
-mod vs {
+mod vs { // Position/Color already calcutated
     vulkano_shaders::shader! {
         ty: "vertex",
         src: r"
             #version 460
 
-            struct uGeneralData {
-                mat4 projection_matrix;
-                mat4 view_matrix;
-                vec2 resolution;
-                float time;
-            };
-
-            struct uEntityData {
-                mat4 model_matrix;
-            };
-            
-            layout(set = 0, binding = 0) buffer GeneralData {
-                uGeneralData data;
-            } general_buf;
-            
-            layout(set = 0, binding = 1) buffer EntityData {
-                uEntityData data[];
-            } entities_buf;
-
-            layout(location = 0) in uint entity_id;
-            layout(location = 1) in vec3 position;
-            layout(location = 2) in vec4 color;
-            layout(location = 3) in vec4 vertex_matrix0;
-            layout(location = 4) in vec4 vertex_matrix1;
-            layout(location = 5) in vec4 vertex_matrix2;
-            layout(location = 6) in vec4 vertex_matrix3;
+            layout(location = 0) in vec4 position;
+            layout(location = 1) in vec4 color;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
                 out_color = color;
 
-                mat4 transform = mat4(vertex_matrix0, vertex_matrix1, vertex_matrix2, vertex_matrix3);
-                vec4 uv = vec4(position, 1.0) * transform * entities_buf.data[entity_id].model_matrix * general_buf.data.view_matrix * general_buf.data.projection_matrix;
-
-                                if (general_buf.data.resolution.x > general_buf.data.resolution.y) {
-                    uv.x *= general_buf.data.resolution.y/general_buf.data.resolution.x;
-                                    } else {
-                    uv.y *= general_buf.data.resolution.x/general_buf.data.resolution.y;
-                }
-
-                gl_Position = uv;
+                gl_Position = position;
             }
         ",
     }
@@ -272,30 +239,89 @@ mod fs {
     }
 }
 
-// TODOCOMPUTEUPDATE
-// mod cs {
-//     vulkano_shaders::shader! {
-//         ty: "compute",
-//         src: r"
-//             #version 460
-//
-//             layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-//
-//             struct uData {
-//                 mat3 model_matrix;
-//             };
-//
-//             layout(set = 0, binding = 0) buffer EntityData {
-//                 uData data[];
-//             } buf;
-//
-//             void main() {
-//                 uint idx = gl_GlobalInvocationID.x;
-//                 buf.model_matrix[idx] *= 12;
-//             }
-//         ",
-//     }
-// }
+mod cs {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        src: r"
+            #version 460
+
+            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+            struct Vertex {
+                vec4 position;
+                vec4 color;
+                uint entity_id; // Index in t.d
+            };
+            struct VSInput {
+                vec4 position;
+                vec4 color;
+            };
+            struct Entity {
+                mat4 model_matrix;
+                uint parent_id; // Index in t.d. 0 if no parent
+            };
+            struct MatrixTransformation {
+                uint ty; // The type of matrix transformation
+                mat3 v; // The values of this transformation, interpreted depending on the type.
+                float start;
+                float end;
+                uint evolution;
+            };
+            struct MatrixTransformer {
+                mat4 current; // The current resulting matrix, acts a pre-result cache.
+                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
+            };
+            struct ColorTransformation {
+                uint ty; // The type of color transformation
+                vec4 v; // The values of this transformation, interpreted depending on the type.
+                float start;
+                float end;
+                uint evolution;
+            };
+            struct ColorTransformer {
+                mat4 current; // The current resulting color, acts a pre-output cache.
+                uvec2 range; // The index range of the color transformations of this transformer inside `c`.
+            };
+
+            // Precalculated shared variables
+
+            layout(push_constant) uniform Shared {
+                mat4 vpr_matrix; // View + projection + resolution (unstretching, scaling) matrix
+                float time;
+            } s;
+
+            // Default vertex data and VS input.
+
+            layout(set = 0, binding = 0) buffer OutputVertices {
+                VSInput d[]; // 'd' for 'Data'.
+            } ov;
+            layout(set = 0, binding = 1) buffer InputVertices {
+                Vertex d[]; // 'd' for 'Data'.
+            } iv;
+
+            // Transformations data
+
+            // Indices: per-vertex transformers, then per-model transformers
+            layout(set = 0, binding = 2) buffer MatrixTransformers {
+                MatrixTransformer d[];
+            } tf;
+            layout(set = 0, binding = 3) buffer MatrixTransformations {
+                MatrixTransformation d[];
+            } t;
+            // Per-vertex transformers
+            layout(set = 0, binding = 4) buffer ColorTransformers {
+                ColorTransformer d[];
+            } cf;
+            layout(set = 0, binding = 5) buffer ColorTransformations {
+                ColorTransformation d[];
+            } c;
+
+            void main() {
+                ov.d[gl_GlobalInvocationID.x].position = iv.d[gl_GlobalInvocationID.x].position;
+            }
+        ",
+    }
+}
 
 impl Vera {
     /// Sets up Vera with Vulkan
@@ -499,6 +525,8 @@ impl Vera {
             (vertex_len, position_vertex_data),
             (background_color, start_time, end_time)
         ) = from_input(input);
+
+        if position_vertex_data.is_empty() { panic!("At least one model needs to be present in the scene! Exiting…") }
         // ---------------------------------------
 
         // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
@@ -1238,6 +1266,8 @@ impl Vk {
             (self.vertex_len, self.position_vertex_data),
             (self.background_color, self.start_time, self.end_time)
         ) = from_input(input);
+
+        if self.position_vertex_data.is_empty() { panic!("At least one model needs to be present in the scene! Exiting…") }
 
         self.recreate_vertex_buffer();
         self.recreate_color_vertex_buffer();

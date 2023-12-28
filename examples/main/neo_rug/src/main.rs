@@ -16,7 +16,7 @@ fn get() -> Input {
         m: (0..100)
         .into_iter()
         .map(|n| {
-            Model::from_merge({
+            Model::from_models({
                 vec![
                     Triangle::new(
                         Vertex::new()

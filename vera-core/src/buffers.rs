@@ -1,62 +1,109 @@
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
-/// A base vertex with a position, given as input to the graphics pipeline.
+/// An already-transformed vertex with a position and a color, given as input to the graphics pipeline.
 #[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
-pub(crate) struct VertexData {
-    /// The id of the entity this vertex belongs to.
-    #[format(R32_UINT)]
-    pub(crate) entity_id: u32,
+pub(crate) struct VSInput {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
     #[format(R32G32B32_SFLOAT)]
     pub(crate) position: [f32; 3],
-}
-impl VertexData {
-    pub(crate) fn new(entity_id: u32, position: [f32; 3]) -> Self {
-        VertexData { 
-            entity_id,
-            position, 
-        }
-    }
-}
-
-/// A base vertex for Vera, given as input to the graphics pipeline.
-#[derive(BufferContents, Vertex, Debug)]
-#[repr(C)]
-pub(crate) struct ColorVertexData {
     /// The rgba color of this vertex.
     #[format(R32G32B32A32_SFLOAT)]
     pub(crate) color: [f32; 4],
 }
-impl ColorVertexData {
-    pub(crate) fn new(color: [f32; 4]) -> Self {
-        ColorVertexData { 
+impl VSInput {
+    pub(crate) fn new(position: [f32; 3], color: [f32; 4]) -> Self {
+        VSInput {
+            position,
+            color, 
+        }
+    }
+}
+
+/// The original, unmodified vertex data, set once for the descriptor set to read.
+#[derive(BufferContents, Debug)]
+#[repr(C)]
+pub(crate) struct BaseVertex {
+    /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
+    pub(crate) position: [f32; 3],
+    /// The rgba color of this vertex.
+    pub(crate) color: [f32; 4],
+    /// The id of this vertex.
+    pub(crate) vertex_id: u32,
+}
+impl BaseVertex {
+    pub(crate) fn new(position: [f32; 3], color: [f32; 4], vertex_id: u32) -> Self {
+        BaseVertex {
+            position,
+            color,
+            vertex_id,
+        }
+    }
+}
+
+/// The data read and updated via the compute shader that recreates the vertex buffer every frame.
+#[derive(BufferContents, Debug)]
+#[repr(C)]
+pub(crate) struct MatrixTransformers {
+    
+}
+impl MatrixTransformers {
+    pub(crate) fn new(position: [f32; 3], color: [f32; 4]) -> Self {
+        MatrixTransformers {
+            position,
             color, 
         }
     }
 }
 
 /// Additional vertex data for one vertex
-#[derive(Debug, Clone, Vertex, BufferContents)]
+#[derive(Debug, Clone, BufferContents)]
 #[repr(C)]
-pub(crate) struct TransformVertexData {
-    /// The first vec4 of the vertex matrix
-    #[format(R32G32B32A32_SFLOAT)]
-    pub(crate) vertex_matrix0: [f32 ; 4],
-    /// The second vec4 of the vertex matrix
-    #[format(R32G32B32A32_SFLOAT)]
-    pub(crate) vertex_matrix1: [f32 ; 4],
-    /// The third vec4 of the vertex matrix
-    #[format(R32G32B32A32_SFLOAT)]
-    pub(crate) vertex_matrix2: [f32 ; 4],
-    /// The fourth vec4 of the vertex matrix
-    #[format(R32G32B32A32_SFLOAT)]
-    pub(crate) vertex_matrix3: [f32 ; 4],
+pub(crate) struct TransformVertex {
 }
-impl TransformVertexData {
+impl TransformVertex {
     /// Returns an identity matrix, applying no transformation.
     pub(crate) fn new() -> Self {
-        TransformVertexData { 
+        TransformVertex { 
+            vertex_matrix0: [1.0, 0.0, 0.0, 0.0],
+            vertex_matrix1: [0.0, 1.0, 0.0, 0.0],
+            vertex_matrix2: [0.0, 0.0, 1.0, 0.0],
+            vertex_matrix3: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
+}
+
+/// The data read and updated via the compute shader that recreates the vertex buffer every frame.
+#[derive(BufferContents, Debug)]
+#[repr(C)]
+pub(crate) struct VertexMatrix {
+    /// The first vec4 of the vertex matrix
+    pub(crate) vertex_matrix0: [f32 ; 4],
+    /// The second vec4 of the vertex matrix
+    pub(crate) vertex_matrix1: [f32 ; 4],
+    /// The third vec4 of the vertex matrix
+    pub(crate) vertex_matrix2: [f32 ; 4],
+    /// The fourth vec4 of the vertex matrix
+    pub(crate) vertex_matrix3: [f32 ; 4],
+}
+impl CSInput {
+    pub(crate) fn new(position: [f32; 3], color: [f32; 4]) -> Self {
+        CSInput {
+            position,
+            color, 
+        }
+    }
+}
+
+/// Additional vertex data for one vertex
+#[derive(Debug, Clone, BufferContents)]
+#[repr(C)]
+pub(crate) struct TransformVertex {
+}
+impl TransformVertex {
+    /// Returns an identity matrix, applying no transformation.
+    pub(crate) fn new() -> Self {
+        TransformVertex { 
             vertex_matrix0: [1.0, 0.0, 0.0, 0.0],
             vertex_matrix1: [0.0, 1.0, 0.0, 0.0],
             vertex_matrix2: [0.0, 0.0, 1.0, 0.0],
@@ -153,7 +200,7 @@ pub(crate) struct EntityData {
 impl EntityData {
     /// Returns an identity matrix, applying no transformation.
     pub(crate) fn new() -> Self {
-        EntityData { 
+        EntityData {
             model_matrix: [
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
