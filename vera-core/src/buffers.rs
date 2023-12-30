@@ -1,9 +1,9 @@
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
-/// An already-transformed vertex with a position and a color, given as input to the graphics pipeline.
+/// A vertex with expected position and color, given as input to the graphics pipeline.
 #[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
-pub(crate) struct VSInput {
+pub(crate) struct BaseVertex {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
     #[format(R32G32B32_SFLOAT)]
     pub(crate) position: [f32; 4],
@@ -14,7 +14,7 @@ pub(crate) struct VSInput {
     #[format(R32_UINT)]
     pub(crate) entity_id: u32,
 }
-impl Default for VSInput {
+impl Default for BaseVertex {
     fn default() -> Self {
         Self {
             position: [0.0, 0.0, 0.0, 1.0],
@@ -22,18 +22,6 @@ impl Default for VSInput {
             entity_id: 0,
         }
     }
-}
-
-/// The original, unmodified vertex data, set once for the descriptor set to read.
-#[derive(BufferContents, Debug)]
-#[repr(C)]
-pub(crate) struct BaseVertex {
-    /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
-    pub(crate) position: [f32; 4],
-    /// The rgba color of this vertex.
-    pub(crate) color: [f32; 4],
-    /// The id of this vertex.
-    pub(crate) entity_id: u32,
 }
 
 /// The original, unmodified vertex data, set once for the descriptor set to read.
@@ -123,14 +111,22 @@ impl ColorTransformer {
     }
 }
 
-/// General-purpose uniform data
+/// General-purpose uniform data used in the compute shader.
 #[derive(Debug, Clone, BufferContents)]
 #[repr(C)]
-pub(crate) struct GeneralData {
+pub(crate) struct CSGeneral {
     /// The vpr matrix
-    pub(crate) mat: [f32 ; 16],
+    pub(crate) entity_count: u64,
     /// The time elapsed since the beginning.
     pub(crate) time: f32,
+}
+
+/// General-purpose uniform data used in the vertex shader.
+#[derive(Debug, Clone, BufferContents)]
+#[repr(C)]
+pub(crate) struct VSGeneral {
+    /// The vpr matrix
+    pub(crate) mat: [f32 ; 16],
 }
 // impl Default for GeneralData {
 //     fn default() -> Self {

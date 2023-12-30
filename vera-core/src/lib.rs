@@ -140,11 +140,12 @@ struct Vk {
     end_time: f32,
 
 
-    general_push_data: GeneralData,
+    general_push_cs: CSGeneral,
+    general_push_vs: VSGeneral,
     general_push_transformer: (Transformer, Transformer),
 
 
-    vsinput_buffer: Subbuffer<[VSInput]>,
+    vsinput_buffer: Subbuffer<[BaseVertex]>,
     basevertex_buffer: Subbuffer<[BaseVertex]>,
     vertext_buffer: Subbuffer<[MatrixT]>,
     vertexc_buffer: Subbuffer<[VectorT]>,
@@ -160,48 +161,137 @@ struct Vk {
     model_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]>,
 }
 
+
+mod cs {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        src: r"
+            #version 460
+
+            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+            
+            struct BaseVertex {
+                vec4 position;
+                vec4 color;
+                uint entity_id; // Index in t.d
+            };
+
+            struct MatrixTransformation {
+                uint ty; // The type of matrix transformation
+                mat3 v; // The values of this transformation, interpreted depending on the type.
+                float start;
+                float end;
+                uint evolution;
+            };
+            struct MatrixTransformer {
+                mat4 current; // The current resulting matrix, acts a pre-result cache.
+                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
+            };
+            struct ColorTransformation {
+                uint ty; // The type of color transformation
+                mat3 v; // The values of this transformation, interpreted depending on the type.
+                float start;
+                float end;
+                uint evolution;
+            };
+            struct ColorTransformer {
+                vec4 current; // The current resulting color, acts a pre-output cache.
+                uvec2 range; // The index range of the color transformations of this transformer inside `c`.
+            };
+
+
+            // BUFFERS
+
+            layout(set = 0, binding = 0) buffer OutputVertices {
+                BaseVertex d[]; // 'd' for 'Data'.
+            } ov;
+            layout(set = 0, binding = 1) readonly buffer InputVertices {
+                BaseVertex d[];
+            } iv;
+
+            // Per-vertex
+            layout(set = 0, binding = 2) buffer MatrixTransformers {
+                MatrixTransformer d[];
+            } tf;
+            layout(set = 0, binding = 3) readonly buffer MatrixTransformations {
+                MatrixTransformation d[];
+            } t;
+            layout(set = 0, binding = 4) buffer ColorTransformers {
+                ColorTransformer d[];
+            } cl;
+            layout(set = 0, binding = 5) readonly buffer ColorTransformations {
+                ColorTransformation d[];
+            } c;
+            // Per-model
+            layout(set = 0, binding = 6) buffer Model_MatrixTransformers {
+                MatrixTransformer d[];
+            } m_tf;
+            layout(set = 0, binding = 7) readonly buffer Model_MatrixTransformations {
+                MatrixTransformation d[];
+            } m_t;
+
+
+            layout(push_constant) uniform GeneralInfo {
+                float time;
+                uint enity_count;
+            } gen;
+
+
+            void main() {
+                // Calculate & fill output position
+                ov.d[gl_GlobalInvocationID.x].position = iv.d[gl_GlobalInvocationID.x].position;
+
+
+                // Calculate & fill output color
+                ov.d[gl_GlobalInvocationID.x].color = iv.d[gl_GlobalInvocationID.x].color;
+
+
+                // If model not already transformed, atomically increase gen.entity_count
+
+            }
+        ",
+    }
+}
+
 mod vs { // Position/Color already calcutated
     vulkano_shaders::shader! {
         ty: "vertex",
         src: r"
             #version 460
 
-            struct GeneralData {
-                mat4 mat;
-                float time;
-            };
             struct Entity {
                 uint parent_id; // Index in t.d. 0 if no parent
             };
             struct ModelT {
                 mat4 mat;
             };
-            
-            layout(push_constant) uniform GeneralInfo {
-                GeneralData data;
-            } gen;
-            layout(set = 0, binding = 0) buffer Entity {
-                Entity data[];
-            } ent;
-            layout(set = 0, binding = 1) buffer ModelT {
-                ModelT data[];
-            } mod;
 
             layout(location = 0) in vec4 position;
             layout(location = 1) in vec4 color;
             layout(location = 2) in uint entity_id;
-            layout(location = 3) in mat4 transform;
 
             layout(location = 0) out vec4 out_color;
 
+            layout(push_constant) uniform GeneralInfo {
+                mat4 mat;
+                float time;
+            } gen;
+            layout(set = 0, binding = 0) readonly buffer Entities {
+                Entity data[];
+            } ent;
+            layout(set = 0, binding = 1) readonly buffer ModelTransformations {
+                ModelT data[];
+            } mod;
+
             void main() {
-                gl_Position = position * transform;
+                gl_Position = position;
                 uint model_id = entity_id;
                 while (model_id!=0) {
                     gl_Position *= mod.data[model_id].mat;
                     model_id = ent.data[model_id].parent_id;
                 }
-                gl_Position *= gen.data.mat;
+                gl_Position *= gen.mat;
                 out_color = color;
             }
         ",
@@ -220,154 +310,6 @@ mod fs {
 
             void main() {
                 f_color = in_color;
-            }
-        ",
-    }
-}
-
-mod vertext_cs {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        src: r"
-            #version 460
-
-            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-            
-            struct MatrixTransformation {
-                uint ty; // The type of matrix transformation
-                mat3 v; // The values of this transformation, interpreted depending on the type.
-                float start;
-                float end;
-                uint evolution;
-            };
-            struct ColorTransformation {
-                uint ty; // The type of color transformation
-                mat3 v; // The values of this transformation, interpreted depending on the type.
-                float start;
-                float end;
-                uint evolution;
-            };
-            struct MatrixTransformer {
-                mat4 current; // The current resulting matrix, acts a pre-result cache.
-                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
-            };
-            struct ColorTransformer {
-                vec4 current; // The current resulting color, acts a pre-output cache.
-                uvec2 range; // The index range of the color transformations of this transformer inside `c`.
-            };
-
-            // Transformations data
-
-            // Indices: per-vertex transformers, then per-model transformers
-            layout(set = 0, binding = 2) buffer MatrixTransformers {
-                MatrixTransformer d[];
-            } tf;
-            // Indices: per-vertex transformers, then per-model transformers
-            layout(set = 0, binding = 3) buffer ColorTransformers {
-                ColorTransformer d[];
-            } cf;
-            layout(set = 0, binding = 4) buffer MatrixTransformations {
-                MatrixTransformation d[];
-            } t;
-            layout(set = 0, binding = 5) buffer ColorTransformations {
-                ColorTransformation d[];
-            } c;
-
-            void main() {
-                
-            }
-        ",
-    }
-}
-
-mod modelt_cs {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        src: r"
-            #version 460
-
-            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-            
-            struct MatrixTransformation {
-                uint ty; // The type of matrix transformation
-                mat3 v; // The values of this transformation, interpreted depending on the type.
-                float start;
-                float end;
-                uint evolution;
-            };
-            struct MatrixTransformer {
-                mat4 current; // The current resulting matrix, acts a pre-result cache.
-                uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
-            };
-
-            // Precalculated shared variables
-
-            layout(push_constant) uniform Shared {
-                mat4 vpr_matrix; // View + projection + resolution (unstretching => scaling) matrix
-                float time;
-            } s;
-
-            // Transformations data
-
-            // Indices: per-vertex transformers, then per-model transformers
-            layout(set = 0, binding = 2) buffer MatrixTransformers {
-                MatrixTransformer d[];
-            } tf;
-            layout(set = 0, binding = 4) buffer MatrixTransformations {
-                MatrixTransformation d[];
-            } t;
-
-            void main() {
-                
-            }
-        ",
-    }
-}
-
-mod vb_cs {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        src: r"
-            #version 460
-
-            layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-            struct VSInput {
-                vec4 position;
-                vec4 color;
-            };
-            struct BaseVertex {
-                vec4 position;
-                vec4 color;
-                uint entity_id; // Index in t.d
-            };
-            struct Entity {
-                uint entity_id; // Non-Zero
-                uint parent_id; // Index in t.d. 0 if no parent
-            };
-
-            // Precalculated shared variables
-
-            layout(push_constant) uniform Shared {
-                mat4 vpr_matrix; // View + projection + resolution (unstretching => scaling) matrix
-                float time;
-            } s;
-
-            // Default vertex data and VS input.
-
-            layout(set = 0, binding = 0) buffer OutputVertices {
-                VSInput d[]; // 'd' for 'Data'.
-            } ov;
-            layout(set = 0, binding = 1) buffer InputVertices {
-                BaseVertex d[];
-            } iv;
-
-            void main() {
-                // Model coloring ?
-                // -> Apply color transformations from parent model to model to vertex
-
-                ov.d[gl_GlobalInvocationID.x].position = iv.d[gl_GlobalInvocationID.x].position;
-                ov.d[gl_GlobalInvocationID.x].color = iv.d[gl_GlobalInvocationID.x].color;
             }
         ",
     }
@@ -554,7 +496,7 @@ impl Vera {
         // -------
         let (
             (background_color, start_time, end_time),
-            (general_push_data, general_push_transformer),
+            (general_push_cs, general_push_vs, general_push_transformer),
             (
                 vsinput_buffer,
                 basevertex_buffer,
@@ -587,7 +529,7 @@ impl Vera {
             .expect("failed to create fragment shader module");
 
         let drawing_pipeline: Arc<GraphicsPipeline> = {
-            let vertex_input_state = [VSInput::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
+            let vertex_input_state = [BaseVertex::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
                 .definition(&drawing_vs.info().input_interface)
                 .unwrap();
 
@@ -778,7 +720,8 @@ impl Vera {
                 end_time,
 
 
-                general_push_data,
+                general_push_cs,
+                general_push_vs,
                 general_push_transformer,
 
 
@@ -808,7 +751,7 @@ impl Vera {
     pub fn reset(&mut self, input: Input) {
         (
             (self.vk.background_color, self.vk.start_time, self.vk.end_time),
-            (self.vk.general_push_data, self.vk.general_push_transformer),
+            (self.vk.general_push_cs, self.vk.general_push_vs, self.vk.general_push_transformer),
             (
                 self.vk.vsinput_buffer,
                 self.vk.basevertex_buffer,
@@ -875,9 +818,9 @@ fn from_input(
     input: Input
 ) -> (
     ([f32; 4], f32, f32),
-    (GeneralData,  (Transformer, Transformer)),
+    (CSGeneral, VSGeneral, (Transformer, Transformer)),
     (
-        Subbuffer<[VSInput]>,
+        Subbuffer<[BaseVertex]>,
         Subbuffer<[BaseVertex]>,
         Subbuffer<[MatrixT]>,
         Subbuffer<[VectorT]>,
@@ -905,14 +848,17 @@ fn from_input(
         },
     } = input;
 
-    let general_push_data: GeneralData = GeneralData {
+    let general_push_vs: VSGeneral = VSGeneral {
         mat: [
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ],
-        time: 0.0
+    };
+    let general_push_cs: CSGeneral = CSGeneral {
+        time: 0.0,
+        entity_count: 0,
     };
     let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
 
@@ -1044,7 +990,7 @@ fn from_input(
     
     // BUFFERS
 
-    let vsinput_buffer: Subbuffer<[VSInput]> = create_buffer(
+    let vsinput_buffer: Subbuffer<[BaseVertex]> = create_buffer(
         queue,
         memory_allocator,
         &cb_allocator,
@@ -1166,7 +1112,7 @@ fn from_input(
 
     (
         (meta.bg, meta.start, meta.end),
-        (general_push_data, general_push_transformer),
+        (general_push_cs, general_push_vs, general_push_transformer),
         (
             vsinput_buffer,
             basevertex_buffer,
@@ -1385,7 +1331,7 @@ impl Vk {
             // driver to optimize things, at the cost of slower window resizes.
             // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
             self.drawing_pipeline = {
-                let vertex_input_state = [VSInput::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
+                let vertex_input_state = [BaseVertex::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
                     .definition(&self.drawing_vs.info().input_interface)
                     .unwrap();
                 let stages = [
