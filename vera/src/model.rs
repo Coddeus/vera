@@ -45,17 +45,43 @@ impl Model {
             t: vec![],
         }
     }
-    /// Sets the model rgb color values.
+    /// Sets the model's (and submodels') vertices rgb color values.
     pub fn rgb(mut self, red: f32, green: f32, blue: f32) -> Self {
         self.vertices
             .iter_mut()
             .for_each(|v| v.set_rgb(red, green, blue));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_rgb(red, green, blue);});
         self
     }
-    /// Sets the model opacity
+    /// Sets the model's (and submodels') vertices opacity
     pub fn alpha(mut self, alpha: f32) -> Self {
-        self.vertices.iter_mut().for_each(|v| v.set_alpha(alpha));
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_alpha(alpha));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_alpha(alpha);});
         self
+    }
+    /// Sets the model's (and submodels') vertices rgb color values.
+    pub fn set_rgb(&mut self, red: f32, green: f32, blue: f32) {
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_rgb(red, green, blue));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_rgb(red, green, blue);});
+    }
+    /// Sets the model's (and submodels') vertices opacity
+    pub fn set_alpha(&mut self, alpha: f32) {
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_alpha(alpha));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_alpha(alpha);});
     }
 
     /// Adds a new transformation with default speed evolution, start time and end time.
