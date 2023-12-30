@@ -10,12 +10,16 @@ pub(crate) struct VSInput {
     /// The rgba color of this vertex.
     #[format(R32G32B32A32_SFLOAT)]
     pub(crate) color: [f32; 4],
+    /// The id of this vertex.
+    #[format(R32_UINT)]
+    pub(crate) entity_id: u32,
 }
 impl Default for VSInput {
     fn default() -> Self {
         Self {
             position: [0.0, 0.0, 0.0, 1.0],
             color: [0.5, 1.0, 0.8, 1.0],
+            entity_id: 0,
         }
     }
 }
@@ -33,18 +37,22 @@ pub(crate) struct BaseVertex {
 }
 
 /// The original, unmodified vertex data, set once for the descriptor set to read.
-#[derive(BufferContents, Debug)]
+#[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
 pub(crate) struct MatrixT {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
+    #[name("transform")]
+    #[format(R32G32B32_SFLOAT)]
     pub(crate) mat: [f32; 16],
 }
 
 /// The original, unmodified vertex data, set once for the descriptor set to read.
-#[derive(BufferContents, Debug)]
+#[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
 pub(crate) struct VectorT {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
+    #[name("color")]
+    #[format(R32G32B32A32_SFLOAT)]
     pub(crate) vec: [f32; 4],
 }
 

@@ -101,11 +101,8 @@ struct Vk {
     framebuffers: Vec<Arc<Framebuffer>>,
     
     memory_allocator: Arc<GenericMemoryAllocator<FreeListAllocator>>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_set_allocator: StandardDescriptorSetAllocator,
-    
-    max_uniform_buffer_size: u32,
-    max_storage_buffer_size: u32,
+    cb_allocator: StandardCommandBufferAllocator,
+    ds_allocator: StandardDescriptorSetAllocator,
 
 
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -147,20 +144,20 @@ struct Vk {
     general_push_transformer: (Transformer, Transformer),
 
 
-    vsinput_buffer: Subbuffer<VSInput>,
-    basevertex_buffer: Subbuffer<BaseVertex>,
-    vertext_buffer: Subbuffer<MatrixT>,
-    vertexc_buffer: Subbuffer<VectorT>,
-    entity_buffer: Subbuffer<Entity>,
-    modelt_buffer: Subbuffer<MatrixT>,
+    vsinput_buffer: Subbuffer<[VSInput]>,
+    basevertex_buffer: Subbuffer<[BaseVertex]>,
+    vertext_buffer: Subbuffer<[MatrixT]>,
+    vertexc_buffer: Subbuffer<[VectorT]>,
+    entity_buffer: Subbuffer<[Entity]>,
+    modelt_buffer: Subbuffer<[MatrixT]>,
 
-    vertex_matrixtransformation_buffer: Subbuffer<MatrixTransformation>,
-    vertex_matrixtransformer_buffer: Subbuffer<MatrixTransformer>,
-    vertex_colortransformation_buffer: Subbuffer<ColorTransformation>,
-    vertex_colortransformer_buffer: Subbuffer<ColorTransformer>,
+    vertex_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]>,
+    vertex_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]>,
+    vertex_colortransformation_buffer: Subbuffer<[ColorTransformation]>,
+    vertex_colortransformer_buffer: Subbuffer<[ColorTransformer]>,
 
-    model_matrixtransformation_buffer: Subbuffer<MatrixTransformation>,
-    model_matrixtransformer_buffer: Subbuffer<MatrixTransformer>,
+    model_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]>,
+    model_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]>,
 }
 
 mod vs { // Position/Color already calcutated
@@ -169,14 +166,43 @@ mod vs { // Position/Color already calcutated
         src: r"
             #version 460
 
+            struct GeneralData {
+                mat4 mat;
+                float time;
+            };
+            struct Entity {
+                uint parent_id; // Index in t.d. 0 if no parent
+            };
+            struct ModelT {
+                mat4 mat;
+            };
+            
+            layout(push_constant) uniform GeneralInfo {
+                GeneralData data;
+            } gen;
+            layout(set = 0, binding = 0) buffer Entity {
+                Entity data[];
+            } ent;
+            layout(set = 0, binding = 1) buffer ModelT {
+                ModelT data[];
+            } mod;
+
             layout(location = 0) in vec4 position;
             layout(location = 1) in vec4 color;
+            layout(location = 2) in uint entity_id;
+            layout(location = 3) in mat4 transform;
 
             layout(location = 0) out vec4 out_color;
 
             void main() {
+                gl_Position = position * transform;
+                uint model_id = entity_id;
+                while (model_id!=0) {
+                    gl_Position *= mod.data[model_id].mat;
+                    model_id = ent.data[model_id].parent_id;
+                }
+                gl_Position *= gen.data.mat;
                 out_color = color;
-                gl_Position = position;
             }
         ",
     }
@@ -524,110 +550,30 @@ impl Vera {
 
         // ---------------------------------------------------------------------------------------------------------------------------------
 
-        // Max buffer sizes
-        // ----------------
-        // // If the entities fit (inlcuding the other uniforms), use UBO, otherwise use SSBO
-        let max_uniform_buffer_size: u32 = physical_device.properties().max_uniform_buffer_range;
-        let max_storage_buffer_size: u32 = physical_device.properties().max_storage_buffer_range;
-        println!(
-            "max_uniform_buffer_size: {}\nmax_storage_buffer_size: {}\n",
-            max_uniform_buffer_size, max_storage_buffer_size
-        );
+        // Buffers
+        // -------
+        let (
+            (background_color, start_time, end_time),
+            (general_push_data, general_push_transformer),
+            (
+                vsinput_buffer,
+                basevertex_buffer,
+                vertext_buffer,
+                vertexc_buffer,
+                entity_buffer,
+                modelt_buffer,
+    
+                vertex_matrixtransformation_buffer,
+                vertex_matrixtransformer_buffer,
+                vertex_colortransformation_buffer,
+                vertex_colortransformer_buffer,
+    
+                model_matrixtransformation_buffer,
+                model_matrixtransformer_buffer,
+            ),
+        ) = from_input(queue.clone(), memory_allocator.clone(), &cb_allocator, input);
 
-        // ----------------
-
-        // Initial buffer data, len and transform.
-        // ---------------------------------------
-
-        // let (
-        //     (general_uniform_data, general_uniform_transformer), 
-        //     (entities_uniform_len, entities_uniform_data, entities_uniform_transformer), 
-        //     (transform_vertex_data, transform_vertex_transformer), 
-        //     (color_vertex_data, color_vertex_colorizer), 
-        //     (vertex_len, position_vertex_data),
-        //     (background_color, start_time, end_time)
-        // ) = from_input(input);
-
-        if position_vertex_data.is_empty() { panic!("At least one model needs to be present in the scene! Exiting…") }
-        // ---------------------------------------
-
-        // Staging & Device-local vertex buffers, and their copy & update command buffers  // TODOCOMPUTEUPDATE
-        // ------------------------------------------------------------------------------
-
-
-        // BUFFERS
-
-        let vsinput_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let basevertex_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let entity_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let matrixtransformation_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let colortransformation_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let matrixtransformer_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-        
-        // Vertex buffer
-        let colortransformer_buffer = create_buffer(
-            queue,
-            memory_allocator,
-            &cb_allocator,
-            BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
-            position_vertex_data,
-            vertex_len
-        );
-
-
-        // --------------------------------------------------------------------------------------------
+        // -------
 
         // Graphics pipeline & Drawing command buffer
         // ------------------------------------------
@@ -641,7 +587,7 @@ impl Vera {
             .expect("failed to create fragment shader module");
 
         let drawing_pipeline: Arc<GraphicsPipeline> = {
-            let vertex_input_state = [VertexData::per_vertex(), ColorVertexData::per_vertex(), TransformVertexData::per_vertex()]
+            let vertex_input_state = [VSInput::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
                 .definition(&drawing_vs.info().input_interface)
                 .unwrap();
 
@@ -710,7 +656,7 @@ impl Vera {
                 .unwrap()
                 .clone();
         let descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
-            &descriptor_set_allocator,
+            &ds_allocator,
             descriptor_set_layout.clone(),
             [
                 WriteDescriptorSet::buffer(0, general_uniform_buffer.clone()),
@@ -804,41 +750,18 @@ impl Vera {
                 render_pass,
                 framebuffers,
 
-                // -----
+
                 memory_allocator,
-                command_buffer_allocator,
-                descriptor_set_allocator,
+                cb_allocator,
+                ds_allocator,
 
-                // -----
-                max_uniform_buffer_size,
-                max_storage_buffer_size,
 
-                // -----
-                vertex_buffer,
-                staging_vertex_buffer,
-                vertex_copy_command_buffer,
-                vertex_copy_fence,
+                previous_frame_end,
+                recreate_swapchain,
+                show_count,
+                time,
 
-                // -----
-                general_uniform_buffer,
-                general_staging_uniform_buffer,
-                general_uniform_copy_command_buffer,
-                general_uniform_copy_fence,
 
-                // -----
-                entities_uniform_buffer,
-                entities_staging_uniform_buffer,
-                entities_uniform_copy_command_buffer,
-                entities_uniform_copy_fence,
-
-                // -----
-
-                // -----
-                // uniform_update_cs,
-                // uniform_update_pipeline,
-                // uniform_update_command_buffer,
-
-                // -----
                 drawing_vs,
                 drawing_fs,
                 descriptor_set,
@@ -849,36 +772,31 @@ impl Vera {
                 drawing_fences,
                 previous_drawing_fence_i,
 
-                // -----
-                previous_frame_end,
-                recreate_swapchain,
-                show_count,
-                time,
-
-                // -----
-                position_vertex_data: vec![],
-                vertex_len,
-                general_uniform_data,
-                general_uniform_transformer,
-                entities_uniform_data: vec![],
-                entities_uniform_transformer,
-                entities_uniform_len,
-                transform_vertex_data: vec![],
-                transform_vertex_transformer,
-                transform_vertex_buffer,
-                staging_transform_vertex_buffer,
-                transform_vertex_copy_command_buffer,
-                transform_vertex_copy_fence,
-                color_vertex_data: vec![],
-                color_vertex_colorizer,
-                color_vertex_buffer,
-                staging_color_vertex_buffer,
-                color_vertex_copy_command_buffer,
-                color_vertex_copy_fence,
 
                 background_color,
                 start_time,
                 end_time,
+
+
+                general_push_data,
+                general_push_transformer,
+
+
+                vsinput_buffer,
+                basevertex_buffer,
+                vertext_buffer,
+                vertexc_buffer,
+                entity_buffer,
+                modelt_buffer,
+
+                vertex_matrixtransformation_buffer,
+                vertex_matrixtransformer_buffer,
+                vertex_colortransformation_buffer,
+                vertex_colortransformer_buffer,
+
+                model_matrixtransformation_buffer,
+                model_matrixtransformer_buffer,
+
             },
         }
     }
@@ -888,7 +806,26 @@ impl Vera {
     /// In heavy animations, resetting is useful for reducing the CPU/GPU usage if you split you animations in several parts.
     /// Also useful if called from a loop for hot-reloading.
     pub fn reset(&mut self, input: Input) {
-        self.vk.source(input);
+        (
+            (self.vk.background_color, self.vk.start_time, self.vk.end_time),
+            (self.vk.general_push_data, self.vk.general_push_transformer),
+            (
+                self.vk.vsinput_buffer,
+                self.vk.basevertex_buffer,
+                self.vk.vertext_buffer,
+                self.vk.vertexc_buffer,
+                self.vk.entity_buffer,
+                self.vk.modelt_buffer,
+    
+                self.vk.vertex_matrixtransformation_buffer,
+                self.vk.vertex_matrixtransformer_buffer,
+                self.vk.vertex_colortransformation_buffer,
+                self.vk.vertex_colortransformer_buffer,
+    
+                self.vk.model_matrixtransformation_buffer,
+                self.vk.model_matrixtransformer_buffer,
+            ),
+        ) = from_input(self.vk.queue.clone(), self.vk.memory_allocator.clone(), &self.vk.cb_allocator, input);
     }
 
     /// Shows the animation form start to end once.
@@ -936,6 +873,25 @@ fn from_input(
     memory_allocator: Arc<dyn MemoryAllocator>,
     cb_allocator: &StandardCommandBufferAllocator,
     input: Input
+) -> (
+    ([f32; 4], f32, f32),
+    (GeneralData,  (Transformer, Transformer)),
+    (
+        Subbuffer<[VSInput]>,
+        Subbuffer<[BaseVertex]>,
+        Subbuffer<[MatrixT]>,
+        Subbuffer<[VectorT]>,
+        Subbuffer<[Entity]>,
+        Subbuffer<[MatrixT]>,
+
+        Subbuffer<[MatrixTransformation]>,
+        Subbuffer<[MatrixTransformer]>,
+        Subbuffer<[ColorTransformation]>,
+        Subbuffer<[ColorTransformer]>,
+
+        Subbuffer<[MatrixTransformation]>,
+        Subbuffer<[MatrixTransformer]>,
+    ),
 ) {
     // Meta and general (CPU and push constants)
     let Input {
@@ -949,7 +905,6 @@ fn from_input(
         },
     } = input;
 
-    let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
     let general_push_data: GeneralData = GeneralData {
         mat: [
             1.0, 0.0, 0.0, 0.0,
@@ -959,13 +914,13 @@ fn from_input(
         ],
         time: 0.0
     };
+    let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
 
     // SHADER DATA (for the below filled buffers)
 
     // vb_cs
     let mut basevertex_data: Vec<BaseVertex> = vec![];
     let mut entity_data: Vec<Entity> = vec![];
-    let mut modelt_data: Vec<MatrixT> = vec![];
 
     // vertext_cs
     // Outputs are vertext_data and vertexc_data (transformations and colorizations)
@@ -1007,9 +962,8 @@ fn from_input(
         model_matrixtransformer_data.extend(m_model_matrixtransformer);
     }
 
-    fn from_model(model: Model, id: u32) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>,) {
+    fn from_model(model: Model, parent_id: u32) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>,) {
         unsafe { ENTITY_INDEX+=1; }
-        let id = unsafe { ENTITY_INDEX };
 
         let mut basevertex: Vec<BaseVertex> = vec![]; // done
         let mut entity: Vec<Entity> = vec![]; // done
@@ -1043,7 +997,7 @@ fn from_input(
         }
 
         entity.push(Entity {
-            parent_id: id,
+            parent_id,
         });
 
         
@@ -1058,7 +1012,7 @@ fn from_input(
                 m_vertex_colortransformer,
                 m_model_matrixtransformation,
                 m_model_matrixtransformer
-            ) = from_model(m, id);
+            ) = from_model(m, parent_id);
 
             basevertex.extend(m_basevertex);
             entity.extend(m_entity);
@@ -1085,7 +1039,7 @@ fn from_input(
     }
 
 
-    let vertices_len: u64 = vsinput_data.len() as u64;
+    let vertices_len: u64 = basevertex_data.len() as u64;
     let entities_len: u64 = entity_data.len() as u64;
     
     // BUFFERS
@@ -1229,7 +1183,7 @@ fn from_input(
             model_matrixtransformation_buffer,
             model_matrixtransformer_buffer,
         ),
-    );
+    )
 }
 
 fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
@@ -1288,23 +1242,6 @@ fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
     gpu_cl
 }
 
-// for (entity_id, model) in m.into_iter().enumerate() {
-//     for v in model.vertices.into_iter() {
-//         position_vertex_data.push(VertexData { entity_id: entity_id as u32, position: v.position });
-//         color_vertex_data.push(ColorVertexData { color: v.color });
-//         color_vertex_colorizer.push(Colorizer::from_c(v.color, v.c));
-//         transform_vertex_transformer.push(Transformer::from_t(v.t));
-//     }
-//     entities_uniform_transformer.push(Transformer::from_t(model.t));
-// }
-// 
-// let entities_uniform_len = entities_uniform_transformer.len() as u64;
-// let entities_uniform_data: Vec<EntityData> = vec![EntityData::new(); entities_uniform_len as usize];
-// let vertex_len = position_vertex_data.len() as u64;
-// 
-// let transform_vertex_data: Vec<TransformVertexData> = vec![TransformVertexData::new(); vertex_len as usize];
-
-/// Returns a device-local buffer for the given usage and `len` length. If `filled`, fill it with the given `iter` iterated data, and usage flags must contain BufferUsage::TRANSFER_DST
 fn create_buffer<T, I>(
     queue: Arc<Queue>,
     memory_allocator: Arc<dyn MemoryAllocator>,
@@ -1381,407 +1318,10 @@ where
 }
 
 impl Vk {
-    /// Resets all content to `input`.
-    fn source(&mut self, input: Input) {
-        // (
-        //     (self.general_uniform_data, self.general_uniform_transformer), 
-        //     (self.entities_uniform_len, self.entities_uniform_data, self.entities_uniform_transformer), 
-        //     (self.transform_vertex_data, self.transform_vertex_transformer), 
-        //     (self.color_vertex_data, self.color_vertex_colorizer), 
-        //     (self.vertex_len, self.position_vertex_data),
-        //     (self.background_color, self.start_time, self.end_time)
-        // ) = from_input(input);
 
-        if self.position_vertex_data.is_empty() { panic!("At least one model needs to be present in the scene! Exiting…") }
-
-        self.recreate_vertex_buffer();
-        self.recreate_color_vertex_buffer();
-        self.recreate_transform_vertex_buffer();
-        self.recreate_entities_uniform_buffer();
-        self.recreate_general_uniform_buffer();
-
-        self.descriptor_set = PersistentDescriptorSet::new(
-            &self.descriptor_set_allocator,
-            self.descriptor_set_layout.clone(),
-            [
-                WriteDescriptorSet::buffer(0, self.general_uniform_buffer.clone()),
-                WriteDescriptorSet::buffer(1, self.entities_uniform_buffer.clone()),
-            ],
-            [],
-        )
-        .unwrap();
-
-        self.copy_vertex_buffer();
-        self.copy_color_vertex_buffer();
-        self.copy_transform_vertex_buffer();
-        self.copy_entities_uniform_buffer();
-        self.copy_general_uniform_buffer();
-    }
-
-    // Buffer recreation
-
-    fn recreate_vertex_buffer(&mut self) {
-        self.staging_vertex_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            std::mem::take(&mut self.position_vertex_data),
-        )
-        .expect("failed to create staging_vertex_buffer");
-
-        self.vertex_buffer = Buffer::new_slice::<VertexData>(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_DST
-                    | BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            self.vertex_len,
-        )
-        .expect("failed to create vertex_buffer");
-
-        let mut vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
-            AutoCommandBufferBuilder::primary(
-                &self.command_buffer_allocator,
-                self.queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .expect("failed to create vertex_cbb");
-
-        vertex_cbb
-            .copy_buffer(CopyBufferInfo::buffers(
-                self.staging_vertex_buffer.clone(),
-                self.vertex_buffer.clone(),
-            ))
-            .unwrap();
-
-        self.vertex_copy_command_buffer = vertex_cbb.build().unwrap();
-    }
-
-    fn recreate_color_vertex_buffer(&mut self) {
-        self.staging_color_vertex_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            std::mem::take(&mut self.color_vertex_data),
-        )
-        .expect("failed to create staging_color_vertex_buffer");
-
-        self.color_vertex_buffer = Buffer::new_slice::<ColorVertexData>(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_DST
-                    | BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            self.vertex_len,
-        )
-        .expect("failed to create color_vertex_buffer");
-
-        let mut color_vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
-            AutoCommandBufferBuilder::primary(
-                &self.command_buffer_allocator,
-                self.queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .expect("failed to create color_vertex_cbb");
-        
-        color_vertex_cbb
-            .copy_buffer(CopyBufferInfo::buffers(
-                self.staging_color_vertex_buffer.clone(),
-                self.color_vertex_buffer.clone(),
-            ))
-            .unwrap();
-        
-        self.color_vertex_copy_command_buffer = color_vertex_cbb.build().unwrap();
-    }
-
-    fn recreate_transform_vertex_buffer(&mut self) {
-        self.staging_transform_vertex_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            std::mem::take(&mut self.transform_vertex_data),
-        )
-        .expect("failed to create staging_vertex_buffer");
-
-        self.transform_vertex_buffer = Buffer::new_slice::<TransformVertexData>(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_DST
-                    | BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            self.vertex_len,
-        )
-        .expect("failed to create vertex_buffer");
-
-        let mut transform_vertex_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
-            AutoCommandBufferBuilder::primary(
-                &self.command_buffer_allocator,
-                self.queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .expect("failed to create transform_vertex_cbb");
-
-        transform_vertex_cbb
-            .copy_buffer(CopyBufferInfo::buffers(
-                self.staging_transform_vertex_buffer.clone(),
-                self.transform_vertex_buffer.clone(),
-            ))
-            .unwrap();
-
-        self.transform_vertex_copy_command_buffer = transform_vertex_cbb.build().unwrap();
-    }
-
-    fn recreate_general_uniform_buffer(&mut self) {
-        self.general_staging_uniform_buffer = Buffer::from_data(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            self.general_uniform_data.clone(),
-        )
-        .expect("failed to create staging_uniform_buffer");
-
-        self.general_uniform_buffer = Buffer::new_sized::<GeneralData>(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::UNIFORM_BUFFER
-                    | BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-        )
-        .expect("failed to create uniform_buffer");
-
-        let mut general_uniform_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
-            AutoCommandBufferBuilder::primary(
-                &self.command_buffer_allocator,
-                self.queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .expect("failed to create general_uniform_cbb");
-
-        general_uniform_cbb
-            .copy_buffer(CopyBufferInfo::buffers(
-                self.general_staging_uniform_buffer.clone(),
-                self.general_uniform_buffer.clone(),
-            ))
-            .unwrap();
-
-        self.general_uniform_copy_command_buffer = general_uniform_cbb.build().unwrap();
-    }
-
-    fn recreate_entities_uniform_buffer(&mut self) {
-        self.entities_staging_uniform_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_SRC,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_HOST
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            std::mem::take(&mut self.entities_uniform_data),
-        )
-        .expect("failed to create staging_uniform_buffer");
-
-        self.entities_uniform_buffer = Buffer::new_slice::<EntityData>(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::UNIFORM_BUFFER
-                    | BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            self.entities_uniform_len,
-        )
-        .expect("failed to create uniform_buffer");
-
-        let mut entities_uniform_cbb: AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> =
-            AutoCommandBufferBuilder::primary(
-                &self.command_buffer_allocator,
-                self.queue.queue_family_index(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .expect("failed to create entities_uniform_cbb");
-
-        entities_uniform_cbb
-            .copy_buffer(CopyBufferInfo::buffers(
-                self.entities_staging_uniform_buffer.clone(),
-                self.entities_uniform_buffer.clone(),
-            ))
-            .unwrap();
-
-        self.entities_uniform_copy_command_buffer = entities_uniform_cbb.build().unwrap();
-    }
-
-    // Staging buffer update & copy to device-local memory
-
-    // fn update_vertex_buffer(&mut self) {} // Set once
-
-    fn update_color_vertex_buffer(&mut self) {
-        for (o, i) in self.staging_color_vertex_buffer.write().unwrap().iter_mut()
-            .zip(self.color_vertex_colorizer.iter_mut()) {
-                (*o).color = i.update(self.time).0;
-        }
-
-        self.copy_color_vertex_buffer();
-    }
-
-    fn update_transform_vertex_buffer(&mut self) {
-        for (o, i) in self.staging_transform_vertex_buffer.write().unwrap().iter_mut()
-            .zip(self.transform_vertex_transformer.iter_mut()) {
-                let mat = i.update_vm(self.time).0;
-                ((*o).vertex_matrix0, (*o).vertex_matrix1, (*o).vertex_matrix2, (*o).vertex_matrix3) = (
-                    [mat[0], mat[1], mat[2], mat[3]],
-                    [mat[4], mat[5], mat[6], mat[7]],
-                    [mat[8], mat[9], mat[10], mat[11]],
-                    [mat[12], mat[13], mat[14], mat[15]],
-                );
-        }
-
-        self.copy_transform_vertex_buffer();
-    }
-
-    fn update_general_uniform_buffer(&mut self) {
-        let image_extent: [u32; 2] = self.window.inner_size().into();
-        {
-            let mut buf = self.general_staging_uniform_buffer.write().unwrap();
-            buf.time = self.time;
-            buf.resolution = [image_extent[0] as f32, image_extent[1] as f32];
-            buf.view_matrix = self.general_uniform_transformer.0.update_vp(self.time).0;
-            buf.projection_matrix = self.general_uniform_transformer.1.update_vp(self.time).0;
-        }
-        
-        self.copy_general_uniform_buffer();
-    }
-
-    fn update_entities_uniform_buffer(&mut self) {
-        for (o, i) in self.entities_staging_uniform_buffer.write().unwrap().iter_mut()
-            .zip(self.entities_uniform_transformer.iter_mut()) {
-            (*o).model_matrix = i.update_vm(self.time).0;
-        }
-
-        self.copy_entities_uniform_buffer();
-    }
-
-    // Buffer copy
-
-    fn copy_vertex_buffer(&mut self) {
-        self.vertex_copy_command_buffer
-            .clone()
-            .execute(self.queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
-            .unwrap();
-    }
-
-    fn copy_color_vertex_buffer(&mut self) {
-        self.color_vertex_copy_command_buffer
-            .clone()
-            .execute(self.queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
-            .unwrap();
-    }
-
-    fn copy_transform_vertex_buffer(&mut self) { // Add fences to these methods
-        self.transform_vertex_copy_command_buffer
-            .clone()
-            .execute(self.queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
-            .unwrap();
-    }
-
-    fn copy_general_uniform_buffer(&mut self) {
-        self.general_uniform_copy_command_buffer
-            .clone()
-            .execute(self.queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
-            .unwrap();
-    }
-
-    fn copy_entities_uniform_buffer(&mut self) {
-        self.entities_uniform_copy_command_buffer
-            .clone()
-            .execute(self.queue.clone())
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None /* timeout */)
-            .unwrap();
-    }
-
-    /// Updates the staging buffers and copies their data to the device-local buffers
+    /// Updates the buffers used for drawing using the compute shaders
     fn update(&mut self) {
-        self.update_color_vertex_buffer();
-        self.update_transform_vertex_buffer();
-        self.update_general_uniform_buffer();
-        self.update_entities_uniform_buffer();
+
     }
 
     /// Draws a frame
@@ -1845,7 +1385,7 @@ impl Vk {
             // driver to optimize things, at the cost of slower window resizes.
             // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
             self.drawing_pipeline = {
-                let vertex_input_state = [VertexData::per_vertex(), ColorVertexData::per_vertex(), TransformVertexData::per_vertex()]
+                let vertex_input_state = [VSInput::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
                     .definition(&self.drawing_vs.info().input_interface)
                     .unwrap();
                 let stages = [
@@ -1914,7 +1454,7 @@ impl Vk {
         }
 
         let mut builder = AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
+            &self.cb_allocator,
             self.queue.queue_family_index(),
             CommandBufferUsage::MultipleSubmit,
         )
@@ -1941,13 +1481,10 @@ impl Vk {
                 self.descriptor_set.clone(),
             )
             .unwrap()
-            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .bind_vertex_buffers(0, self.vsinput_buffer.clone())
             .unwrap()
-            .bind_vertex_buffers(1, self.color_vertex_buffer.clone())
-            .unwrap()
-            .bind_vertex_buffers(2, self.transform_vertex_buffer.clone())
-            .unwrap()
-            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
+            .bind_vertex_buffers(1, self.vertext_buffer.clone())            .unwrap()
+            .draw(self.vsinput_buffer.len() as u32, 1, 0, 0)
             .unwrap()
             .end_render_pass(Default::default())
             .unwrap();
