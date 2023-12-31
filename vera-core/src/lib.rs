@@ -16,8 +16,9 @@ pub use color::*;
 pub mod transformer;
 pub use transformer::*;
 
-use vera::{Input, Model, Tf, Vertex as ModelVertex, View, Projection, Transformation, Evolution, Colorization, Cl};
+use vera::{Input, Model, Tf, View, Projection, Transformation, Evolution, Colorization, Cl};
 use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::pipeline::compute::ComputePipelineCreateInfo;
 use vulkano::pipeline::graphics::depth_stencil::{DepthStencilState, DepthState};
 
 use std::sync::Arc;
@@ -56,7 +57,7 @@ use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{
     GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-    PipelineShaderStageCreateInfo,
+    PipelineShaderStageCreateInfo, ComputePipeline,
 };
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::shader::EntryPoint;
@@ -111,13 +112,17 @@ struct Vk {
     time: f32,
 
 
+    draw_pipeline: Arc<GraphicsPipeline>,
+    draw_descriptor_set: Arc<PersistentDescriptorSet>,
+    draw_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    draw_descriptor_set_layout_index: usize,
+    compute_pipeline: Arc<ComputePipeline>,
+    compute_descriptor_set: Arc<PersistentDescriptorSet>,
+    compute_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    compute_descriptor_set_layout_index: usize,
+
     drawing_vs: EntryPoint,
     drawing_fs: EntryPoint,
-    drawing_pipeline: Arc<GraphicsPipeline>,
-    descriptor_set: Arc<PersistentDescriptorSet>,
-    descriptor_set_layout: Arc<DescriptorSetLayout>,
-    descriptor_set_layout_index: usize,
-
     frames_in_flight: usize,
     drawing_fences: Vec<
         Option<
@@ -140,7 +145,7 @@ struct Vk {
     end_time: f32,
 
 
-    general_push_cs: CSGeneral,
+    general_buffer_cs: Subbuffer<[CSGeneral]>,
     general_push_vs: VSGeneral,
     general_push_transformer: (Transformer, Transformer),
 
@@ -167,19 +172,24 @@ mod cs {
         ty: "compute",
         src: r"
             #version 460
+            #define PI 3.1415926535
 
             layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-            
+
+            // STRUCTS
+
             struct BaseVertex {
                 vec4 position;
                 vec4 color;
                 uint entity_id; // Index in t.d
             };
-
+            struct ModelT {
+                mat4 mat;
+            };
             struct MatrixTransformation {
                 uint ty; // The type of matrix transformation
-                mat3 v; // The values of this transformation, interpreted depending on the type.
+                vec3 val; // The values of this transformation, interpreted depending on the type.
                 float start;
                 float end;
                 uint evolution;
@@ -190,7 +200,7 @@ mod cs {
             };
             struct ColorTransformation {
                 uint ty; // The type of color transformation
-                mat3 v; // The values of this transformation, interpreted depending on the type.
+                vec4 val; // The values of this transformation, interpreted depending on the type.
                 float start;
                 float end;
                 uint evolution;
@@ -203,14 +213,13 @@ mod cs {
 
             // BUFFERS
 
+            // Per-vertex
             layout(set = 0, binding = 0) buffer OutputVertices {
                 BaseVertex d[]; // 'd' for 'Data'.
             } ov;
             layout(set = 0, binding = 1) readonly buffer InputVertices {
                 BaseVertex d[];
             } iv;
-
-            // Per-vertex
             layout(set = 0, binding = 2) buffer MatrixTransformers {
                 MatrixTransformer d[];
             } tf;
@@ -224,31 +233,210 @@ mod cs {
                 ColorTransformation d[];
             } c;
             // Per-model
-            layout(set = 0, binding = 6) buffer Model_MatrixTransformers {
+            layout(set = 0, binding = 6) buffer OutputModels {
+                ModelT d[];
+            } om;
+            layout(set = 0, binding = 7) buffer Model_MatrixTransformers {
                 MatrixTransformer d[];
             } m_tf;
-            layout(set = 0, binding = 7) readonly buffer Model_MatrixTransformations {
+            layout(set = 0, binding = 8) readonly buffer Model_MatrixTransformations {
                 MatrixTransformation d[];
             } m_t;
-
-
-            layout(push_constant) uniform GeneralInfo {
+            // Unique
+            layout(set = 0, binding = 9) buffer GeneralInfo {
                 float time;
-                uint enity_count;
+                uint entity_count;
             } gen;
 
 
+            // TRANSFORMATIONS
+
+            vec4 interpolate(vec4 start_color, vec4 end_color, float advancement) {
+                return vec4(
+                    start_color[0] * (1.0-advancement) + end_color[0] * advancement,
+                    start_color[1] * (1.0-advancement) + end_color[1] * advancement,
+                    start_color[2] * (1.0-advancement) + end_color[2] * advancement,
+                    start_color[3] * (1.0-advancement) + end_color[3] * advancement
+                );
+            }
+
+            mat4 scale(float x_scale, float y_scale, float z_scale) {
+                return mat4(
+                    x_scale ,   0.0     ,   0.0     , 0.0 , 
+                    0.0     ,   y_scale ,   0.0     , 0.0 , 
+                    0.0     ,   0.0     ,   z_scale , 0.0 , 
+                    0.0     ,   0.0     ,   0.0     , 1.0
+                );
+            }
+
+            mat4 translate(float x_move, float y_move, float z_move) {
+                return mat4(
+                    1.0 ,   0.0 ,   0.0 ,   x_move ,
+                    0.0 ,   1.0 ,   0.0 ,   y_move ,
+                    0.0 ,   0.0 ,   1.0 ,   z_move ,
+                    0.0 ,   0.0 ,   0.0 ,   1.0
+                );
+            }
+
+            mat4 rotate_x(float angle) {
+                return mat4(
+                    1.0     ,   0.0         ,   0.0         , 0.0 , 
+                    0.0     ,   cos(angle) ,   sin(angle) , 0.0 , 
+                    0.0     ,   -sin(angle),   cos(angle) , 0.0 , 
+                    0.0     ,   0.0         ,   0.0         , 1.0
+                );
+            }
+
+            mat4 rotate_y(float angle) {
+                return mat4(
+                    cos(angle) ,   0.0 ,   sin(angle) , 0.0 , 
+                    0.0         ,   1.0 ,   0.0         , 0.0 , 
+                    -sin(angle),   0.0 ,   cos(angle) , 0.0 , 
+                    0.0         ,   0.0 ,   0.0         , 1.0
+                );
+            }
+
+            mat4 rotate_z(float angle) {
+                return mat4(
+                    cos(angle) ,   sin(angle) ,   0.0 ,   0.0 , 
+                    -sin(angle),   cos(angle) ,   0.0 ,   0.0 , 
+                    0.0         ,   0.0         ,   1.0 ,   0.0 , 
+                    0.0         ,   0.0         ,   0.0 ,   1.0
+                );
+            }
+
+
+            // EVOLUTIONS
+
+            float advancement(float start, float end, uint e) {
+                if (start>=end) {
+                    if (gen.time<end) { return 0.0; }
+                    else { return 1.0; }
+                }
+                if (gen.time < start) {
+                    return 0.0;
+                }
+                if (gen.time >= end) {
+                    return 1.0;
+                }
+                float init = (gen.time-start)/(end-start);
+
+                if (e==0) {
+                    return init;
+                } else if (e==1) {
+                    return sin(init * PI / 2.0);
+                } else if (e==2) {
+                    return 1.0 - cos(init * PI / 2.0);
+                } else if (e==3) {
+                    return (sin((init - 0.5) * PI) + 1.0) / 2.0;
+                } else if (e==4) {
+                    if (init < 0.5) { return sin(init * PI) / 2.0; }
+                    else { return 0.5 + (1.0 - sin(init * PI)) / 2.0; }
+                }
+            }
+
+            // TRANSFORMATIONS MATCHING
+
+            mat4 vertex_matrix_transformation(uint i) {
+                float adv = advancement(t.d[i].start, t.d[i].end, t.d[i].evolution);
+                if (t.d[i].ty==0) {
+                    return scale(t.d[i].val.x * adv, t.d[i].val.y * adv, t.d[i].val.z * adv);
+                } else if (t.d[i].ty==1) {
+                    return translate(t.d[i].val.x * adv, t.d[i].val.y * adv, t.d[i].val.z * adv);
+                } else if (t.d[i].ty==2) {
+                    return rotate_x(t.d[i].val.x * adv);
+                } else if (t.d[i].ty==3) {
+                    return rotate_y(t.d[i].val.x * adv);
+                } else {
+                    return rotate_z(t.d[i].val.x * adv);
+                }
+            }
+
+            vec4 vertex_color_transformation(uint i, vec4 out_color) {
+                float adv = advancement(c.d[i].start, c.d[i].end, c.d[i].evolution);
+                if (c.d[i].ty==0) {
+                    return interpolate(out_color, c.d[i].val, adv);
+                }
+            }
+
+            mat4 model_matrix_transformation(uint i) {
+                float adv = advancement(m_t.d[i].start, m_t.d[i].end, m_t.d[i].evolution);
+                if (m_t.d[i].ty==0) {
+                    return scale(m_t.d[i].val.x * adv, m_t.d[i].val.y * adv, m_t.d[i].val.z * adv);
+                } else if (m_t.d[i].ty==1) {
+                    return translate(m_t.d[i].val.x * adv, m_t.d[i].val.y * adv, m_t.d[i].val.z * adv);
+                } else if (m_t.d[i].ty==2) {
+                    return rotate_x(m_t.d[i].val.x * adv);
+                } else if (m_t.d[i].ty==3) {
+                    return rotate_y(m_t.d[i].val.x * adv);
+                } else {
+                    return rotate_z(m_t.d[i].val.x * adv);
+                }
+            }
+
+
+            // TRANSFORMING
+
+            void transform_vertex() {
+                // position
+                bool first = true;
+                vec4 out_position = iv.d[gl_GlobalInvocationID.x].position * tf.d[gl_GlobalInvocationID.x].current;
+                for (uint i=tf.d[gl_GlobalInvocationID.x].range.x; i<tf.d[gl_GlobalInvocationID.x].range.y; i++) {
+                    if (first && t.d[i].end<gen.time) {
+                        tf.d[gl_GlobalInvocationID.x].current *= vertex_matrix_transformation(i);
+                        tf.d[gl_GlobalInvocationID.x].range.x += 1;
+                    } else {
+                        first = false;
+                    }
+                    out_position *= vertex_matrix_transformation(i);
+                }
+                ov.d[gl_GlobalInvocationID.x].position = out_position;
+                
+                // color
+                first = true;
+                vec4 out_color = cl.d[gl_GlobalInvocationID.x].current;
+                for (uint i=cl.d[gl_GlobalInvocationID.x].range.x; i<cl.d[gl_GlobalInvocationID.x].range.y; i++) {
+                    if (first && t.d[i].end<gen.time) {
+                        cl.d[gl_GlobalInvocationID.x].current *= vertex_color_transformation(i, out_color);
+                        cl.d[gl_GlobalInvocationID.x].range.x += 1;
+                    } else {
+                        first = false;
+                    }
+                    out_color *= vertex_color_transformation(i, out_color);
+                }
+                ov.d[gl_GlobalInvocationID.x].color = out_color;
+            }
+
+            void transform_model() {
+                bool first = true;
+                uint entity_id = atomicAdd(gen.entity_count, 1) + 1;
+                mat4 out_model = m_tf.d[entity_id].current;
+                for (uint i=m_tf.d[entity_id].range.x; i<m_tf.d[entity_id].range.y; i++) {
+                    if (first && m_t.d[i].end<gen.time) {
+                        m_tf.d[entity_id].current *= model_matrix_transformation(i);
+                        m_tf.d[entity_id].range.x += 1;
+                    } else {
+                        first = false;
+                    }
+                    out_model *= model_matrix_transformation(i);
+                }
+                om.d[entity_id].mat = out_model;
+            }
+
+
+            // MAIN
+
             void main() {
-                // Calculate & fill output position
-                ov.d[gl_GlobalInvocationID.x].position = iv.d[gl_GlobalInvocationID.x].position;
+                // If *model* transformation not already calculated, calculate it and atomically increase gen.entity_count.
+                if (iv.d[gl_GlobalInvocationID.x].entity_id != gen.entity_count) {
+                    transform_model();
+                }
 
+                // Calculate & fill vertex position and color.
+                transform_vertex();
 
-                // Calculate & fill output color
-                ov.d[gl_GlobalInvocationID.x].color = iv.d[gl_GlobalInvocationID.x].color;
-
-
-                // If model not already transformed, atomically increase gen.entity_count
-
+                // Copy entity_id.
+                ov.d[gl_GlobalInvocationID.x].entity_id = iv.d[gl_GlobalInvocationID.x].entity_id;
             }
         ",
     }
@@ -273,16 +461,15 @@ mod vs { // Position/Color already calcutated
 
             layout(location = 0) out vec4 out_color;
 
-            layout(push_constant) uniform GeneralInfo {
-                mat4 mat;
-                float time;
-            } gen;
             layout(set = 0, binding = 0) readonly buffer Entities {
                 Entity data[];
             } ent;
             layout(set = 0, binding = 1) readonly buffer ModelTransformations {
                 ModelT data[];
             } mod;
+            layout(push_constant) uniform GeneralInfo {
+                mat4 mat;
+            } gen;
 
             void main() {
                 gl_Position = position;
@@ -496,7 +683,7 @@ impl Vera {
         // -------
         let (
             (background_color, start_time, end_time),
-            (general_push_cs, general_push_vs, general_push_transformer),
+            (general_buffer_cs, general_push_vs, general_push_transformer),
             (
                 vsinput_buffer,
                 basevertex_buffer,
@@ -527,9 +714,13 @@ impl Vera {
             .unwrap()
             .entry_point("main")
             .expect("failed to create fragment shader module");
+        let compute_cs = cs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .expect("failed to create fragment shader module");
 
-        let drawing_pipeline: Arc<GraphicsPipeline> = {
-            let vertex_input_state = [BaseVertex::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
+        let draw_pipeline: Arc<GraphicsPipeline> = {
+            let vertex_input_state = BaseVertex::per_vertex()
                 .definition(&drawing_vs.info().input_interface)
                 .unwrap();
 
@@ -587,22 +778,69 @@ impl Vera {
             .unwrap()
         };
 
-        let pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = drawing_pipeline.layout();
+        let draw_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = draw_pipeline.layout();
         let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
-            pipeline_layout.set_layouts();
-
-        let descriptor_set_layout_index: usize = 0;
-        let descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
+            draw_pipeline_layout.set_layouts();
+        
+        let draw_descriptor_set_layout_index: usize = 0;
+        let draw_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
             descriptor_set_layouts
-                .get(descriptor_set_layout_index)
+                .get(draw_descriptor_set_layout_index)
                 .unwrap()
                 .clone();
-        let descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
+        let draw_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &ds_allocator,
-            descriptor_set_layout.clone(),
+            draw_descriptor_set_layout.clone(),
             [
-                WriteDescriptorSet::buffer(0, general_uniform_buffer.clone()),
-                WriteDescriptorSet::buffer(1, entities_uniform_buffer.clone()),
+                WriteDescriptorSet::buffer(0, entity_buffer.clone()),
+                WriteDescriptorSet::buffer(1, modelt_buffer.clone()),
+            ],
+            [],
+        )
+        .unwrap();
+
+
+
+        let compute_pipeline: Arc<ComputePipeline> = {
+            let stage = PipelineShaderStageCreateInfo::new(compute_cs);
+            let layout = PipelineLayout::new(
+                device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+                    .into_pipeline_layout_create_info(device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            ComputePipeline::new(
+                device.clone(),
+                None,
+                ComputePipelineCreateInfo::stage_layout(stage, layout),
+            )
+            .unwrap()
+        };
+
+        let compute_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = compute_pipeline.layout();
+        let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
+            compute_pipeline_layout.set_layouts();
+
+        let compute_descriptor_set_layout_index: usize = 0;
+        let compute_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
+            descriptor_set_layouts
+                .get(compute_descriptor_set_layout_index)
+                .unwrap()
+                .clone();
+        let compute_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
+            &ds_allocator,
+            compute_descriptor_set_layout.clone(),
+            [
+                WriteDescriptorSet::buffer(0, vsinput_buffer.clone()),
+                WriteDescriptorSet::buffer(1, basevertex_buffer.clone()),
+                WriteDescriptorSet::buffer(2, vertex_matrixtransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(3, vertex_matrixtransformation_buffer.clone()),
+                WriteDescriptorSet::buffer(4, vertex_colortransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(5, vertex_colortransformation_buffer.clone()),
+                WriteDescriptorSet::buffer(6, model_matrixtransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(7, model_matrixtransformation_buffer.clone()),
+                WriteDescriptorSet::buffer(8, general_buffer_cs.clone()),
             ],
             [],
         )
@@ -704,12 +942,18 @@ impl Vera {
                 time,
 
 
+                draw_descriptor_set,
+                draw_descriptor_set_layout,
+                draw_descriptor_set_layout_index,
+                draw_pipeline,
+                compute_descriptor_set,
+                compute_descriptor_set_layout,
+                compute_descriptor_set_layout_index,
+                compute_pipeline,
+
+
                 drawing_vs,
                 drawing_fs,
-                descriptor_set,
-                descriptor_set_layout,
-                descriptor_set_layout_index,
-                drawing_pipeline,
                 frames_in_flight,
                 drawing_fences,
                 previous_drawing_fence_i,
@@ -720,7 +964,7 @@ impl Vera {
                 end_time,
 
 
-                general_push_cs,
+                general_buffer_cs,
                 general_push_vs,
                 general_push_transformer,
 
@@ -751,7 +995,7 @@ impl Vera {
     pub fn reset(&mut self, input: Input) {
         (
             (self.vk.background_color, self.vk.start_time, self.vk.end_time),
-            (self.vk.general_push_cs, self.vk.general_push_vs, self.vk.general_push_transformer),
+            (self.vk.general_buffer_cs, self.vk.general_push_vs, self.vk.general_push_transformer),
             (
                 self.vk.vsinput_buffer,
                 self.vk.basevertex_buffer,
@@ -818,7 +1062,7 @@ fn from_input(
     input: Input
 ) -> (
     ([f32; 4], f32, f32),
-    (CSGeneral, VSGeneral, (Transformer, Transformer)),
+    (Subbuffer<[CSGeneral]>, VSGeneral, (Transformer, Transformer)),
     (
         Subbuffer<[BaseVertex]>,
         Subbuffer<[BaseVertex]>,
@@ -856,10 +1100,18 @@ fn from_input(
             0.0, 0.0, 0.0, 1.0,
         ],
     };
-    let general_push_cs: CSGeneral = CSGeneral {
-        time: 0.0,
-        entity_count: 0,
-    };
+    let general_buffer_cs: Subbuffer<[CSGeneral]> = create_buffer(
+        queue.clone(),
+        memory_allocator.clone(),
+        &cb_allocator,
+        BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
+        [CSGeneral {
+            time: 0.0,
+            entity_count: 0,
+        }].into_iter(),
+        1,
+        true,
+    );
     let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
 
     // SHADER DATA (for the below filled buffers)
@@ -990,9 +1242,14 @@ fn from_input(
     
     // BUFFERS
 
+    // make non_empty
+    vertex_matrixtransformation_data.push(MatrixTransformation::default());
+    vertex_colortransformation_data.push(ColorTransformation::default());
+    model_matrixtransformation_data.push(MatrixTransformation::default());
+
     let vsinput_buffer: Subbuffer<[BaseVertex]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
         [].into_iter(),
@@ -1001,8 +1258,8 @@ fn from_input(
     );
     
     let basevertex_buffer: Subbuffer<[BaseVertex]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         basevertex_data,
@@ -1011,8 +1268,8 @@ fn from_input(
     );
     
     let vertext_buffer: Subbuffer<[MatrixT]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
         [].into_iter(),
@@ -1021,8 +1278,8 @@ fn from_input(
     );
 
     let vertexc_buffer: Subbuffer<[VectorT]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::STORAGE_BUFFER | BufferUsage::VERTEX_BUFFER,
         [].into_iter(),
@@ -1031,8 +1288,8 @@ fn from_input(
     );
     
     let entity_buffer: Subbuffer<[Entity]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         entity_data,
@@ -1041,8 +1298,8 @@ fn from_input(
     );
     
     let modelt_buffer: Subbuffer<[MatrixT]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::STORAGE_BUFFER,
         [].into_iter(),
@@ -1051,8 +1308,8 @@ fn from_input(
     );
     
     let vertex_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         vertex_matrixtransformation_data,
@@ -1061,8 +1318,8 @@ fn from_input(
     );
     
     let vertex_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         vertex_matrixtransformer_data,
@@ -1071,8 +1328,8 @@ fn from_input(
     );
     
     let vertex_colortransformation_buffer: Subbuffer<[ColorTransformation]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         vertex_colortransformation_data,
@@ -1081,8 +1338,8 @@ fn from_input(
     );
     
     let vertex_colortransformer_buffer: Subbuffer<[ColorTransformer]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         vertex_colortransformer_data,
@@ -1091,8 +1348,8 @@ fn from_input(
     );
     
     let model_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         model_matrixtransformation_data,
@@ -1101,8 +1358,8 @@ fn from_input(
     );
     
     let model_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]> = create_buffer(
-        queue,
-        memory_allocator,
+        queue.clone(),
+        memory_allocator.clone(),
         &cb_allocator,
         BufferUsage::TRANSFER_DST | BufferUsage::STORAGE_BUFFER,
         model_matrixtransformer_data,
@@ -1112,7 +1369,7 @@ fn from_input(
 
     (
         (meta.bg, meta.start, meta.end),
-        (general_push_cs, general_push_vs, general_push_transformer),
+        (general_buffer_cs, general_push_vs, general_push_transformer),
         (
             vsinput_buffer,
             basevertex_buffer,
@@ -1330,8 +1587,8 @@ impl Vk {
             // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
             // driver to optimize things, at the cost of slower window resizes.
             // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
-            self.drawing_pipeline = {
-                let vertex_input_state = [BaseVertex::per_vertex(), MatrixT::per_vertex(), VectorT::per_vertex()]
+            self.draw_pipeline = {
+                let vertex_input_state = BaseVertex::per_vertex()
                     .definition(&self.drawing_vs.info().input_interface)
                     .unwrap();
                 let stages = [
@@ -1399,14 +1656,20 @@ impl Vk {
             self.recreate_swapchain = true;
         }
 
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let mut mat: Mat4 = self.general_push_transformer.0.update_vp(self.time);
+        mat.mult(self.general_push_transformer.1.update_vp(self.time));
+        let push_const = VSGeneral {
+            mat: mat.0,
+        };
+
+        let mut draw_builder = AutoCommandBufferBuilder::primary(
             &self.cb_allocator,
             self.queue.queue_family_index(),
-            CommandBufferUsage::MultipleSubmit,
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
-        builder
+        draw_builder
             .begin_render_pass(
                 RenderPassBeginInfo {
                     clear_values: vec![
@@ -1418,24 +1681,46 @@ impl Vk {
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
             )
             .unwrap()
-            .bind_pipeline_graphics(self.drawing_pipeline.clone())
+            .bind_pipeline_graphics(self.draw_pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
-                self.drawing_pipeline.layout().clone(),
-                self.descriptor_set_layout_index as u32,
-                self.descriptor_set.clone(),
+                self.draw_pipeline.layout().clone(),
+                self.draw_descriptor_set_layout_index as u32,
+                self.draw_descriptor_set.clone(),
             )
             .unwrap()
             .bind_vertex_buffers(0, self.vsinput_buffer.clone())
             .unwrap()
-            .bind_vertex_buffers(1, self.vertext_buffer.clone())            .unwrap()
+            .push_constants(self.draw_pipeline.layout().clone(), 0, push_const)
+            .unwrap()
             .draw(self.vsinput_buffer.len() as u32, 1, 0, 0)
             .unwrap()
             .end_render_pass(Default::default())
             .unwrap();
 
-        let drawing_command_buffer = builder.build().unwrap();
+        let draw_command_buffer = draw_builder.build().unwrap();
+        
+
+        let mut compute_builder = AutoCommandBufferBuilder::primary(
+            &self.cb_allocator,
+            self.queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        compute_builder
+            .bind_pipeline_compute(self.compute_pipeline.clone())
+            .unwrap()
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.compute_pipeline.layout().clone(),
+                0,
+                self.compute_descriptor_set.clone(),
+            )
+            .unwrap();
+
+        let compute_command_buffer = compute_builder.build().unwrap();
 
         // self.uniform_copy_command_buffer.clone().execute(
         //     self.queue.clone(),
@@ -1448,7 +1733,9 @@ impl Vk {
             .take()
             .unwrap()
             .join(acquire_future)
-            .then_execute(self.queue.clone(), drawing_command_buffer)
+            .then_execute(self.queue.clone(), compute_command_buffer)
+            .unwrap()
+            .then_execute(self.queue.clone(), draw_command_buffer)
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),

@@ -5,7 +5,7 @@ use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 #[repr(C)]
 pub(crate) struct BaseVertex {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
-    #[format(R32G32B32_SFLOAT)]
+    #[format(R32G32B32A32_SFLOAT)]
     pub(crate) position: [f32; 4],
     /// The rgba color of this vertex.
     #[format(R32G32B32A32_SFLOAT)]
@@ -30,7 +30,7 @@ impl Default for BaseVertex {
 pub(crate) struct MatrixT {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
     #[name("transform")]
-    #[format(R32G32B32_SFLOAT)]
+    #[format(R32G32B32A32_SFLOAT)]
     pub(crate) mat: [f32; 16],
 }
 
@@ -62,6 +62,17 @@ pub(crate) struct MatrixTransformation {
     pub(crate) end: f32,
     pub(crate) evolution: u32,
 }
+impl Default for MatrixTransformation {
+    fn default() -> Self {
+        Self {
+            ty: 0,
+            val: [0.0, 0.0, 0.0],
+            start: 0.0,
+            end: 0.0,
+            evolution: 0,
+        }
+    }
+}
 
 /// A color transformation
 #[derive(BufferContents, Debug)]
@@ -72,6 +83,17 @@ pub(crate) struct ColorTransformation {
     pub(crate) start: f32,
     pub(crate) end: f32,
     pub(crate) evolution: u32,
+}
+impl Default for ColorTransformation {
+    fn default() -> Self {
+        Self {
+            ty: 0,
+            val: [0.0, 0.0, 0.0, 0.0],
+            start: 0.0,
+            end: 0.0,
+            evolution: 0,
+        }
+    }
 }
 
 /// A matrix transformer

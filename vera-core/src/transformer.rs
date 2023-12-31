@@ -254,7 +254,7 @@ impl Colorizer {
 /// The returned value is between 0.0 and 1.0, where 0.0 is the start and 1.0 is the end.
 fn advancement(start: f32, end: f32, time: f32, e: Evolution) -> f32 {
     if start>=end {
-        if time<start { return 0.0; }
+        if time<end { return 0.0; }
         else { return 1.0; }
     }
 

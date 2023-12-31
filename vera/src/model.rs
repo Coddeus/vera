@@ -117,14 +117,14 @@ impl Model {
     }
 
     /// Modifies the start time of the latest colorization added.
-    /// A start after an end will result in the colorization being instantaneous at start.
+    /// A start after an end will result in the colorization being instantaneous at end.
     pub fn start_c(mut self, start: f32) -> Self {
         self.vertices.iter_mut().for_each(|v| { v.c.last_mut().unwrap().start = start; });
         self
     }
 
     /// Modifies the end time of the latest colorization added.
-    /// An end before a start will result in the colorization being instantaneous at start.
+    /// An end before a start will result in the colorization being instantaneous at end.
     pub fn end_c(mut self, end: f32) -> Self {
         self.vertices.iter_mut().for_each(|v| { v.c.last_mut().unwrap().end = end; });
         self
@@ -137,14 +137,14 @@ impl Model {
     }
 
     /// Modifies the start time of the latest transformation added.
-    /// A start after an end will result in the transformation being instantaneous at start.
+    /// A start after an end will result in the transformation being instantaneous at end.
     pub fn start_t(mut self, start: f32) -> Self {
         self.t.last_mut().unwrap().start = start;
         self
     }
 
     /// Modifies the end time of the latest transformation added.
-    /// An end before a start will result in the transformation being instantaneous at start.
+    /// An end before a start will result in the transformation being instantaneous at end.
     pub fn end_t(mut self, end: f32) -> Self {
         self.t.last_mut().unwrap().end = end;
         self
