@@ -1,7 +1,7 @@
-use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
+use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex, padded::Padded};
 
 /// A vertex with expected position and color, given as input to the graphics pipeline.
-#[derive(BufferContents, Vertex, Debug)]
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct BaseVertex {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
@@ -11,36 +11,32 @@ pub(crate) struct BaseVertex {
     #[format(R32G32B32A32_SFLOAT)]
     pub(crate) color: [f32; 4],
     /// The id of this vertex.
-    #[format(R32_UINT)]
-    pub(crate) entity_id: u32,
+    #[format(R32G32B32A32_UINT)]
+    pub(crate) entity_id: Padded<u32, 12>,
 }
 impl Default for BaseVertex {
     fn default() -> Self {
         Self {
             position: [0.0, 0.0, 0.0, 1.0],
             color: [0.5, 1.0, 0.8, 1.0],
-            entity_id: 0,
+            entity_id: Padded(0),
         }
     }
 }
 
 /// The original, unmodified vertex data, set once for the descriptor set to read.
-#[derive(BufferContents, Vertex, Debug)]
+#[derive(BufferContents, Debug, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct MatrixT {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
-    #[name("transform")]
-    #[format(R32G32B32A32_SFLOAT)]
     pub(crate) mat: [f32; 16],
 }
 
 /// The original, unmodified vertex data, set once for the descriptor set to read.
-#[derive(BufferContents, Vertex, Debug)]
+#[derive(BufferContents, Debug)]
 #[repr(C)]
 pub(crate) struct VectorT {
     /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
-    #[name("color")]
-    #[format(R32G32B32A32_SFLOAT)]
     pub(crate) vec: [f32; 4],
 }
 
@@ -48,7 +44,7 @@ pub(crate) struct VectorT {
 #[derive(BufferContents, Debug)]
 #[repr(C)]
 pub(crate) struct Entity {
-    pub(crate) parent_id: u32,
+    pub(crate) parent_id: Padded<u32, 12>,
 }
 
 /// A matrix transformation
@@ -56,11 +52,11 @@ pub(crate) struct Entity {
 #[repr(C)]
 pub(crate) struct MatrixTransformation {
     /// The kind of transformation
-    pub(crate) ty: u32, 
     pub(crate) val: [f32; 3],
+    pub(crate) ty: u32, 
     pub(crate) start: f32,
     pub(crate) end: f32,
-    pub(crate) evolution: u32,
+    pub(crate) evolution: Padded<u32, 4>,
 }
 impl Default for MatrixTransformation {
     fn default() -> Self {
@@ -69,7 +65,7 @@ impl Default for MatrixTransformation {
             val: [0.0, 0.0, 0.0],
             start: 0.0,
             end: 0.0,
-            evolution: 0,
+            evolution: Padded(0),
         }
     }
 }
@@ -78,8 +74,8 @@ impl Default for MatrixTransformation {
 #[derive(BufferContents, Debug)]
 #[repr(C)]
 pub(crate) struct ColorTransformation {
-    pub(crate) ty: u32,
     pub(crate) val: [f32; 4],
+    pub(crate) ty: u32,
     pub(crate) start: f32,
     pub(crate) end: f32,
     pub(crate) evolution: u32,
@@ -97,11 +93,11 @@ impl Default for ColorTransformation {
 }
 
 /// A matrix transformer
-#[derive(BufferContents, Debug)]
+#[derive(BufferContents, Debug, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct MatrixTransformer {
     pub(crate) mat: [f32; 16],
-    pub(crate) range: [u32; 2],
+    pub(crate) range: Padded<[u32; 2], 8>,
 }
 impl MatrixTransformer {
     pub(crate) fn from_lo(length: u32, offset: u32) -> Self {
@@ -112,38 +108,38 @@ impl MatrixTransformer {
                 0.0, 0.0, 1.0, 0.0, 
                 0.0, 0.0, 0.0, 1.0, 
             ],
-            range: [offset, offset+length],
+            range: Padded([offset, offset+length]),
         }
     }
 }
 
 /// A color transformer
-#[derive(BufferContents, Debug)]
+#[derive(BufferContents, Debug, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct ColorTransformer {
     pub(crate) vec: [f32; 4],
-    pub(crate) range: [u32; 2],
+    pub(crate) range: Padded<[u32; 2], 8>,
 }
 impl ColorTransformer {
     pub(crate) fn from_lo(length: u32, offset: u32) -> Self {
         Self {
             vec: [0.0, 0.0, 0.0, 1.0],
-            range: [offset, offset+length],
+            range: Padded([offset, offset+length]),
         }
     }
 }
 
 /// General-purpose uniform data used in the compute shader.
+/// Used as push constant
 #[derive(Debug, Clone, BufferContents)]
 #[repr(C)]
 pub(crate) struct CSGeneral {
-    /// The vpr matrix
-    pub(crate) entity_count: u64,
     /// The time elapsed since the beginning.
     pub(crate) time: f32,
 }
 
 /// General-purpose uniform data used in the vertex shader.
+/// Used as push constant
 #[derive(Debug, Clone, BufferContents)]
 #[repr(C)]
 pub(crate) struct VSGeneral {

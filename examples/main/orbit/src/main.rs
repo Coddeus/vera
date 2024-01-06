@@ -3,7 +3,7 @@ use vera_core::*;
 use fastrand;
 
 fn main() {
-    let mut v = Vera::create(get());
+    let mut v = Vera::init(get());
     unsafe {
         D_VERTEX_ALPHA = 1.0;
     }

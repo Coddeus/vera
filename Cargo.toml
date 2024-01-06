@@ -3,7 +3,8 @@ members = [
     "vera",
     "vera-core",
     "examples/main/*",
-    ]
+    "mre",
+]
 resolver = "2"
 
 [workspace.dependencies.vera-core]
@@ -16,7 +17,7 @@ path = "vera"
 
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 [profile.release]
 opt-level = 3

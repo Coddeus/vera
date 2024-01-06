@@ -1,8 +1,10 @@
+//! This example was made before animation was implemented. It calculates vertices directly for a static image.
+
 use vera::*;
 use vera_core::*;
 
 fn main() {
-    let mut v = Vera::create(get());
+    let mut v = Vera::init(get());
     unsafe {
         D_VERTEX_ALPHA = 1.0;
     }

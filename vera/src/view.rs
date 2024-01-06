@@ -36,14 +36,14 @@ impl View {
     }
 
     /// Modifies the start time of the latest transformation added.
-    /// A start after an end will result in the transformation being instantaneous at end.
+    /// A start after an end will result in the transformation being instantaneous at start.
     pub fn start_t(mut self, start: f32) -> Self {
         self.t.last_mut().unwrap().start = start;
         self
     }
 
     /// Modifies the end time of the latest transformation added.
-    /// An end before a start will result in the transformation being instantaneous at end.
+    /// An end before a start will result in the transformation being instantaneous at start.
     pub fn end_t(mut self, end: f32) -> Self {
         self.t.last_mut().unwrap().end = end;
         self
