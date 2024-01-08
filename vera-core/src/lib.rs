@@ -15,8 +15,6 @@ pub use color::*;
 /// "Transformers", update buffers of matrices and colors according to vera input transformations and colorizations: start/end time, speed evolution
 pub mod transformer;
 pub use transformer::*;
-/// Inner tests
-pub mod test;
 
 use vera::{Input, Model, Tf, View, Projection, Transformation, Evolution, Colorization, Cl};
 use vulkano::descriptor_set::layout::DescriptorSetLayout;
@@ -37,7 +35,7 @@ use vulkano::pipeline::graphics::rasterization::RasterizationState;
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 
-use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer, AllocateBufferError, BufferContents};
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer, BufferContents};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo,
@@ -70,7 +68,7 @@ use vulkano::swapchain::{
 };
 use vulkano::sync::future::{FenceSignalFuture, JoinFuture};
 use vulkano::sync::{self, GpuFuture};
-use vulkano::{Validated, Version, VulkanError};
+use vulkano::{Validated, Version};
 
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
@@ -226,8 +224,8 @@ mod vertex_cs {
                 uint entity_id; // Index in t.d
             };
             struct MatrixTransformation {
-                uint ty; // The type of matrix transformation
                 vec3 val; // The values of this transformation, interpreted depending on the type.
+                uint ty; // The type of matrix transformation
                 float start;
                 float end;
                 uint evolution;
@@ -237,8 +235,8 @@ mod vertex_cs {
                 uvec2 range; // The index range of the matrix transformations of this transformer inside `t`.
             };
             struct ColorTransformation {
-                uint ty; // The type of color transformation
                 vec4 val; // The values of this transformation, interpreted depending on the type.
+                uint ty; // The type of color transformation
                 float start;
                 float end;
                 uint evolution;
@@ -285,6 +283,7 @@ mod vertex_cs {
                     start_color[2] * (1.0-advancement) + end_color[2] * advancement,
                     start_color[3] * (1.0-advancement) + end_color[3] * advancement
                 );
+                // return mix(start_color, end_color, advancement);
             }
 
             mat4 scale(float x_scale, float y_scale, float z_scale) {
@@ -389,14 +388,15 @@ mod vertex_cs {
                 bool first = true;
                 vec4 out_position = iv.d[gl_GlobalInvocationID.x].position * tf.d[gl_GlobalInvocationID.x].current;
                 for (uint i=tf.d[gl_GlobalInvocationID.x].range.x; i<tf.d[gl_GlobalInvocationID.x].range.y; i++) {
-                    if (t.d[i].start>gen.time) {
+                    if (t.d[i].start<gen.time) {
+                        mat4 mat = vertex_matrix_transformation(i);
                         if (first && t.d[i].end<gen.time) {
-                            tf.d[gl_GlobalInvocationID.x].current *= vertex_matrix_transformation(i);
+                            tf.d[gl_GlobalInvocationID.x].current *= mat;
                             tf.d[gl_GlobalInvocationID.x].range.x += 1;
                         } else {
                             first = false;
                         }
-                        out_position *= vertex_matrix_transformation(i);
+                        out_position *= mat;
                     }
                 }
                 ov.d[gl_GlobalInvocationID.x].position = out_position;
@@ -405,14 +405,15 @@ mod vertex_cs {
                 first = true;
                 vec4 out_color = cl.d[gl_GlobalInvocationID.x].current;
                 for (uint i=cl.d[gl_GlobalInvocationID.x].range.x; i<cl.d[gl_GlobalInvocationID.x].range.y; i++) {
-                    if (c.d[i].start>gen.time) {
+                    if (c.d[i].start<gen.time) {
+                        vec4 vec = vertex_color_transformation(i, out_color);
                         if (first && c.d[i].end<gen.time) {
-                            cl.d[gl_GlobalInvocationID.x].current *= vertex_color_transformation(i, out_color);
+                            cl.d[gl_GlobalInvocationID.x].current = vec;
                             cl.d[gl_GlobalInvocationID.x].range.x += 1;
                         } else {
                             first = false;
                         }
-                        out_color *= vertex_color_transformation(i, out_color);
+                        out_color = vec;
                     }
                 }
                 ov.d[gl_GlobalInvocationID.x].color = out_color;
@@ -423,8 +424,6 @@ mod vertex_cs {
 
             void main() {
                 // Calculate & fill vertex position and color.
-                // ov.d[gl_GlobalInvocationID.x].position.x+=0.001;
-                // ov.d[gl_GlobalInvocationID.x].color=vec4(1.0, 1.0, 1.0, 1.0);
                 transform_vertex();
             }
         ",
@@ -447,8 +446,8 @@ mod model_cs {
                 mat4 mat;
             };
             struct MatrixTransformation {
-                uint ty; // The type of matrix transformation
                 vec3 val; // The values of this transformation, interpreted depending on the type.
+                uint ty; // The type of matrix transformation
                 float start;
                 float end;
                 uint evolution;
@@ -573,7 +572,7 @@ mod model_cs {
                 uint entity_id = gl_GlobalInvocationID.x;
                 mat4 out_model = m_tf.d[entity_id].current;
                 for (uint i=m_tf.d[entity_id].range.x; i<m_tf.d[entity_id].range.y; i++) {
-                    if (m_t.d[i].start>gen.time) {
+                    if (m_t.d[i].start<gen.time) {
                         mat4 mat = model_matrix_transformation(i);
                         if (first && m_t.d[i].end<gen.time) {
                             m_tf.d[entity_id].current *= mat;
@@ -605,7 +604,7 @@ mod vs {
             #version 460
 
             struct Entity {
-                uint parent_id; // Index in t.d. 0 if no parent
+                uvec4 parent_id;
             };
             struct ModelT {
                 mat4 mat;
@@ -622,20 +621,24 @@ mod vs {
             } ent;
             layout(set = 0, binding = 7) readonly buffer ModelTransformations {
                 ModelT data[];
-            } mod;
+            } _mod;
             layout(push_constant) uniform GeneralInfo {
                 mat4 mat;
             } gen;
 
             void main() {
-                gl_Position = position;
-                uint model_id = entity_id.x;
-                while (model_id!=0) {
-                    gl_Position *= mod.data[model_id].mat;
-                    model_id = ent.data[model_id].parent_id;
-                }
-                gl_Position *= gen.mat;
+                vec4 pos = position;
                 out_color = color;
+                uint model_id=entity_id.x;
+
+                while (model_id>0) {
+                    pos *= _mod.data[model_id].mat;
+                    model_id=ent.data[model_id].parent_id.x;
+                }
+
+                pos *= gen.mat;
+                
+                gl_Position = pos;
             }
         ",
     }
@@ -1324,53 +1327,25 @@ fn from_input(
     };
     let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
 
-    // SHADER DATA (for the below filled buffers)
-
-    // vb_cs
-    let mut basevertex_data: Vec<BaseVertex> = vec![];
-    let mut entity_data: Vec<Entity> = vec![];
-
-    // vertex_cs
-    // Outputs are vertext_data and vertexc_data (transformations and colorizations)
-    let mut vertex_matrixtransformation_data: Vec<MatrixTransformation> = vec![];
-    let mut vertex_matrixtransformer_data: Vec<MatrixTransformer> = vec![];
-    let mut vertex_colortransformation_data: Vec<ColorTransformation> = vec![];
-    let mut vertex_colortransformer_data: Vec<ColorTransformer> = vec![];
-
-    // model_cs
-    // Output is modelt_data
-    let mut model_matrixtransformation_data: Vec<MatrixTransformation> = vec![];
-    let mut model_matrixtransformer_data: Vec<MatrixTransformer> = vec![];
-
 
     static mut ENTITY_INDEX: u32 = 0;
     static mut VERTEX_MATRIXTRANSFORMATION_OFFSET: u32 = 0;
     static mut VERTEX_COLORTRANSFORMATION_OFFSET: u32 = 0;
     static mut MODEL_MATRIXTRANSFORMATION_OFFSET: u32 = 0;
 
-    for model in m.into_iter() {
-        let (
-            m_basevertex,
-            m_entity,
-            m_vertex_matrixtransformation,
-            m_vertex_matrixtransformer,
-            m_vertex_colortransformation,
-            m_vertex_colortransformer,
-            m_model_matrixtransformation,
-            m_model_matrixtransformer
-        ) = from_model(model, 0);
+    let (
+        mut basevertex_data,
+            entity_data,
+        mut vertex_matrixtransformation_data,
+        mut vertex_matrixtransformer_data,
+        mut vertex_colortransformation_data,
+        mut vertex_colortransformer_data,
+        mut model_matrixtransformation_data,
+        mut model_matrixtransformer_data
+    ) = from_model(Model::from_models(m), 0);
 
-        basevertex_data.extend(m_basevertex);
-        entity_data.extend(m_entity);
-        vertex_matrixtransformation_data.extend(m_vertex_matrixtransformation);
-        vertex_matrixtransformer_data.extend(m_vertex_matrixtransformer);
-        vertex_colortransformation_data.extend(m_vertex_colortransformation);
-        vertex_colortransformer_data.extend(m_vertex_colortransformer);
-        model_matrixtransformation_data.extend(m_model_matrixtransformation);
-        model_matrixtransformer_data.extend(m_model_matrixtransformer);
-    }
-
-    fn from_model(model: Model, parent_id: u32) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>,) {
+    fn from_model(model: Model, parent_id: u32) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>) {
+        let current_id= unsafe { ENTITY_INDEX };
         unsafe { ENTITY_INDEX+=1; }
 
         let mut basevertex: Vec<BaseVertex> = vec![];
@@ -1381,36 +1356,40 @@ fn from_input(
         let mut vertex_colortransformation: Vec<ColorTransformation> = vec![];
         let mut vertex_colortransformer: Vec<ColorTransformer> = vec![];
     
-        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(model.t); // done
+        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(model.t);
         let mmt_len = model_matrixtransformation.len() as u32;
-        let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET })]; // 
+        let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET })];
         unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET+=mmt_len; }
 
         for v in model.vertices.into_iter() {
             basevertex.push(BaseVertex {
                 position: v.position,
-                color: v.color,
-                entity_id: Padded(unsafe { ENTITY_INDEX }),
+                color: v.color.clone(),
+                entity_id: Padded(current_id),
             });
 
-            vertex_matrixtransformation.extend(to_gpu_tf(v.t));
-            let vmt_len = vertex_matrixtransformation.len() as u32;
+            let gpu_tf = to_gpu_tf(v.t);
+            let vmt_len = gpu_tf.len() as u32;
+            vertex_matrixtransformation.extend(gpu_tf);
             vertex_matrixtransformer.push(MatrixTransformer::from_lo(vmt_len, unsafe { VERTEX_MATRIXTRANSFORMATION_OFFSET }));
             unsafe { VERTEX_MATRIXTRANSFORMATION_OFFSET+=vmt_len; }
-
-            vertex_colortransformation.extend(to_gpu_cl(v.c));
-            let vmt_len = vertex_colortransformation.len() as u32;
-            vertex_colortransformer.push(ColorTransformer::from_lo(vmt_len, unsafe { VERTEX_COLORTRANSFORMATION_OFFSET }));
+            
+            let gpu_cl = to_gpu_cl(v.c);
+            let vmt_len = gpu_cl.len() as u32;
+            vertex_colortransformation.extend(gpu_cl);
+            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, unsafe { VERTEX_COLORTRANSFORMATION_OFFSET }, v.color));
             unsafe { VERTEX_COLORTRANSFORMATION_OFFSET+=vmt_len; }
         }
+
+        // let range = entity[parent_id as usize];
+// 
+        // let ancestors = [range.ancestor_start; range.ancestor_end]
 
         entity.push(Entity {
             parent_id: Padded(parent_id),
         });
-
-        
-
         for m in model.models.into_iter() {
+            println!("{current_id}");
             let (
                 m_basevertex,
                 m_entity,
@@ -1420,7 +1399,7 @@ fn from_input(
                 m_vertex_colortransformer,
                 m_model_matrixtransformation,
                 m_model_matrixtransformer
-            ) = from_model(m, parent_id);
+            ) = from_model(m, current_id);
 
             basevertex.extend(m_basevertex);
             entity.extend(m_entity);
@@ -1452,8 +1431,16 @@ fn from_input(
     }
 
     let dummy_vertex = vsinput_data[0];
-    let dummy_mat_t = vertex_matrixtransformer_data[0];
+    let dummy_mat_t: MatrixTransformer = vertex_matrixtransformer_data[0];
     let dummy_vec_t = vertex_colortransformer_data[0];
+
+    for e in entity_data.iter() {
+        println!("{:?}", e);
+    }
+    for m in model_matrixtransformer_data.iter() {
+        println!("{:?}", m);
+    }
+    println!("{:?}", model_matrixtransformation_data);
     
     let diff = 64-(vsinput_data.len()%64);
     let mut vertex_dispatch_len = basevertex_data.len() as u32 / 64;
@@ -1501,12 +1488,11 @@ fn from_input(
     // BUFFERS
 
     // make non-empty
-    vertex_matrixtransformation_data.push(MatrixTransformation::default());
-    vertex_colortransformation_data.push(ColorTransformation::default());
-    model_matrixtransformation_data.push(MatrixTransformation::default());
+    if vertex_matrixtransformation_data.is_empty() { vertex_matrixtransformation_data.push(MatrixTransformation::default()); }
+    if vertex_colortransformation_data.is_empty() { vertex_colortransformation_data.push(ColorTransformation::default()); }
+    if model_matrixtransformation_data.is_empty() { model_matrixtransformation_data.push(MatrixTransformation::default()); }
 
     let len = vsinput_data.len() as u64;
-    println!("len: {}", len);
     let vsinput_buffer: Subbuffer<[BaseVertex]> = create_buffer(
         queue.clone(),
         memory_allocator.clone(),
@@ -1676,12 +1662,12 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
 
 fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
     let mut gpu_cl: Vec<ColorTransformation> = vec![];
-    for tf in t.into_iter() {
-        let (ty, val) = match tf.c {
+    for cl in t.into_iter() {
+        let (ty, val) = match cl.c {
             Colorization::ToColor(r, g, b, a) => (0, [r, g, b, a]),
-            _ => { println!("Vertex/Model transformation not implemented, ignoring."); continue; },
+            _ => { println!("Vertex colorization not implemented, ignoring."); continue; },
         };
-        let evolution = match tf.e {
+        let evolution = match cl.e {
             Evolution::Linear => 0,
             Evolution::FastIn | Evolution::SlowOut => 1,
             Evolution::FastOut | Evolution::SlowIn => 2,
@@ -1689,10 +1675,10 @@ fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
             Evolution::FastInOut | Evolution::SlowMiddle =>  4,
         };
         gpu_cl.push(ColorTransformation {
-            ty,
             val,
-            start: tf.start,
-            end: tf.end,
+            ty,
+            start: cl.start,
+            end: cl.end,
             evolution,
         })
     }
@@ -1944,7 +1930,7 @@ impl Vk {
             // .unwrap()
             // .dispatch([self.vertex_dispatch_len, 1, 1])
             // .unwrap()
-            .push_constants(self.empty_compute_pipeline.layout().clone(), 0, self.general_push_cs.clone())
+            .push_constants(self.vertex_compute_pipeline.layout().clone(), 0, self.general_push_cs.clone())
             .unwrap()
             .bind_pipeline_compute(self.vertex_compute_pipeline.clone())
             .unwrap()
@@ -1956,6 +1942,8 @@ impl Vk {
             )
             .unwrap()
             .dispatch([self.vertex_dispatch_len, 1, 1])
+            .unwrap()
+            .push_constants(self.model_compute_pipeline.layout().clone(), 0, self.general_push_cs.clone())
             .unwrap()
             .bind_pipeline_compute(self.model_compute_pipeline.clone())
             .unwrap()

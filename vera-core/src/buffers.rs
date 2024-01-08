@@ -24,23 +24,23 @@ impl Default for BaseVertex {
     }
 }
 
-/// The original, unmodified vertex data, set once for the descriptor set to read.
+/// Matrix transformation data.
 #[derive(BufferContents, Debug, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct MatrixT {
-    /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
+    /// The value of the transformation
     pub(crate) mat: [f32; 16],
 }
 
-/// The original, unmodified vertex data, set once for the descriptor set to read.
+/// Vector transformation data.
 #[derive(BufferContents, Debug)]
 #[repr(C)]
 pub(crate) struct VectorT {
-    /// The (x, y) [normalized-square-centered](broken_link) coordinates of this vertex.
+    /// The value of the transformation
     pub(crate) vec: [f32; 4],
 }
 
-/// The data read and updated via the compute shader that recreates the vertex buffer every frame.
+/// Per-entity data.
 #[derive(BufferContents, Debug)]
 #[repr(C)]
 pub(crate) struct Entity {
@@ -83,8 +83,8 @@ pub(crate) struct ColorTransformation {
 impl Default for ColorTransformation {
     fn default() -> Self {
         Self {
-            ty: 0,
             val: [0.0, 0.0, 0.0, 0.0],
+            ty: 0,
             start: 0.0,
             end: 0.0,
             evolution: 0,
@@ -121,9 +121,9 @@ pub(crate) struct ColorTransformer {
     pub(crate) range: Padded<[u32; 2], 8>,
 }
 impl ColorTransformer {
-    pub(crate) fn from_lo(length: u32, offset: u32) -> Self {
+    pub(crate) fn from_loc(length: u32, offset: u32, col: [f32; 4]) -> Self {
         Self {
-            vec: [0.0, 0.0, 0.0, 1.0],
+            vec: col,
             range: Padded([offset, offset+length]),
         }
     }

@@ -17,7 +17,7 @@ path = "vera"
 
 
 [profile.dev]
-opt-level = 0
+opt-level = 1
 
 [profile.release]
 opt-level = 3
