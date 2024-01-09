@@ -5,25 +5,23 @@
 
 /// Buffers which will be sent to the GPU, and rely on the vulkano crate to be compiled
 pub mod buffers;
+#[allow(unused_imports)]
 pub use buffers::*;
 /// Matrices, which interpret the input transformations from vera, on which transformations are applied, and which are sent in buffers.
 pub mod matrix;
 pub use matrix::*;
-/// Colors, which interpret the input "colorizations" (color transformations) from vera, for the color of vertices, and are sent in a buffer.
-pub mod color;
-pub use color::*;
 /// "Transformers", update buffers of matrices and colors according to vera input transformations and colorizations: start/end time, speed evolution
 pub mod transformer;
+#[allow(unused_imports)]
 pub use transformer::*;
 
 use vera::{Input, Model, Tf, View, Projection, Transformation, Evolution, Colorization, Cl};
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
 use vulkano::padded::Padded;
 use vulkano::pipeline::compute::ComputePipelineCreateInfo;
 use vulkano::pipeline::graphics::depth_stencil::{DepthStencilState, DepthState};
 
 use std::sync::Arc;
-use std::time::{Instant, SystemTime};
+use std::time::Instant;
 
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
@@ -85,15 +83,13 @@ pub struct Vera {
 /// The underlying base with executes specific tasks.
 struct Vk {
     // ----- Created on initialization
-    library: Arc<vulkano::VulkanLibrary>,
-    required_extensions: vulkano::instance::InstanceExtensions,
-    instance: Arc<Instance>,
-    surface: Arc<Surface>,
+    _library: Arc<vulkano::VulkanLibrary>,
+    _instance: Arc<Instance>,
+    _surface: Arc<Surface>,
     window: Arc<Window>,
 
-    device_extensions: DeviceExtensions,
-    physical_device: Arc<PhysicalDevice>,
-    queue_family_index: u32,
+    _physical_device: Arc<PhysicalDevice>,
+    _queue_family_index: u32,
     device: Arc<Device>,
     queue: Arc<Queue>,
 
@@ -107,8 +103,6 @@ struct Vk {
     ds_allocator: StandardDescriptorSetAllocator,
 
 
-    previous_update_end: Option<Box<dyn GpuFuture>>,
-    previous_draw_end: Option<Box<dyn GpuFuture>>,
     recreate_swapchain: bool,
     show_count: u32,
     time: f32,
@@ -116,20 +110,13 @@ struct Vk {
 
     draw_pipeline: Arc<GraphicsPipeline>,
     draw_descriptor_set: Arc<PersistentDescriptorSet>,
-    draw_descriptor_set_layout: Arc<DescriptorSetLayout>,
-    draw_descriptor_set_layout_index: usize,
     vertex_compute_pipeline: Arc<ComputePipeline>,
     vertex_compute_descriptor_set: Arc<PersistentDescriptorSet>,
-    vertex_compute_descriptor_set_layout: Arc<DescriptorSetLayout>,
-    vertex_compute_descriptor_set_layout_index: usize,
     model_compute_pipeline: Arc<ComputePipeline>,
     model_compute_descriptor_set: Arc<PersistentDescriptorSet>,
-    model_compute_descriptor_set_layout: Arc<DescriptorSetLayout>,
-    model_compute_descriptor_set_layout_index: usize,
 
     drawing_vs: EntryPoint,
     drawing_fs: EntryPoint,
-    frames_in_flight: usize,
     drawing_fences: Vec<
         Option<
             FenceSignalFuture<
@@ -633,10 +620,10 @@ impl Vera {
         // Event_loop/extensions/instance/surface/window/physical_device/queue_family/device/queue/swapchain/images/render_pass/framebuffers
         // ---------------------------------------------------------------------------------------------------------------------------------
         let event_loop = EventLoop::new();
-        let library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
+        let _library = vulkano::VulkanLibrary::new().expect("no local Vulkan library/DLL");
         let required_extensions = Surface::required_extensions(&event_loop);
-        let instance = Instance::new(
-            library.clone(),
+        let _instance = Instance::new(
+            _library.clone(),
             InstanceCreateInfo {
                 application_name: Some("Vera".to_owned()),
                 application_version: Version::major_minor(0, 2),
@@ -659,13 +646,13 @@ impl Vera {
                 .build(&event_loop)
                 .unwrap(),
         );
-        let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
+        let _surface = Surface::from_window(_instance.clone(), window.clone()).unwrap();
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
 
-        let (physical_device, queue_family_index) = instance
+        let (_physical_device, _queue_family_index) = _instance
             .enumerate_physical_devices()
             .expect("failed to enumerate physical devices")
             .filter(|p| p.supported_extensions().contains(&device_extensions))
@@ -677,7 +664,7 @@ impl Vera {
                         q.queue_flags.contains(QueueFlags::GRAPHICS)
                             && q.queue_flags.contains(QueueFlags::COMPUTE)
                             && q.queue_flags.contains(QueueFlags::TRANSFER)
-                            && p.surface_support(i as u32, &surface).unwrap_or(false)
+                            && p.surface_support(i as u32, &_surface).unwrap_or(false)
                     })
                     .map(|q| (p, q as u32))
             })
@@ -692,15 +679,15 @@ impl Vera {
 
         println!(
             "Using device: {} (type: {:?})",
-            physical_device.properties().device_name,
-            physical_device.properties().device_type,
+            _physical_device.properties().device_name,
+            _physical_device.properties().device_type,
         );
 
         let (device, mut queues) = Device::new(
-            physical_device.clone(),
+            _physical_device.clone(),
             DeviceCreateInfo {
                 queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
+                    queue_family_index: _queue_family_index,
                     ..Default::default()
                 }],
                 enabled_extensions: device_extensions,
@@ -719,21 +706,21 @@ impl Vera {
         // ----------
 
         let (swapchain, images) = {
-            let caps = physical_device
-                .surface_capabilities(&surface, Default::default())
+            let caps = _physical_device
+                .surface_capabilities(&_surface, Default::default())
                 .expect("failed to get surface capabilities");
 
             let dimensions = window.inner_size();
             let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
-            let image_format = physical_device
+            let image_format = _physical_device
                 .clone()
-                .surface_formats(&surface, Default::default())
+                .surface_formats(&_surface, Default::default())
                 .unwrap()[0]
                 .0;
 
             Swapchain::new(
                 device.clone(),
-                surface.clone(),
+                _surface.clone(),
                 SwapchainCreateInfo {
                     min_image_count: caps.min_image_count.max(2),
                     image_format,
@@ -846,6 +833,7 @@ impl Vera {
             .entry_point("main")
             .expect("failed to create model compute shader module");
 
+
         let draw_pipeline: Arc<GraphicsPipeline> = {
             let vertex_input_state = BaseVertex::per_vertex()
                 .definition(&drawing_vs.info().input_interface)
@@ -904,20 +892,14 @@ impl Vera {
             )
             .unwrap()
         };
-
-        let draw_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = draw_pipeline.layout();
-        let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
-            draw_pipeline_layout.set_layouts();
-        
-        let draw_descriptor_set_layout_index: usize = 0;
-        let draw_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
-            descriptor_set_layouts
-                .get(draw_descriptor_set_layout_index)
-                .unwrap()
-                .clone();
         let draw_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &ds_allocator,
-            draw_descriptor_set_layout.clone(),
+            draw_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
             [
                 // WriteDescriptorSet::buffer(0, vsinput_buffer.clone()),
                 // WriteDescriptorSet::buffer(1, basevertex_buffer.clone()),
@@ -951,20 +933,14 @@ impl Vera {
             )
             .unwrap()
         };
-
-        let vertex_compute_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = vertex_compute_pipeline.layout();
-        let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
-            vertex_compute_pipeline_layout.set_layouts();
-
-        let vertex_compute_descriptor_set_layout_index: usize = 0;
-        let vertex_compute_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
-            descriptor_set_layouts
-                .get(vertex_compute_descriptor_set_layout_index)
-                .unwrap()
-                .clone();
         let vertex_compute_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &ds_allocator,
-            vertex_compute_descriptor_set_layout.clone(),
+            vertex_compute_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
             [
                 WriteDescriptorSet::buffer(0, vsinput_buffer.clone()),
                 WriteDescriptorSet::buffer(1, basevertex_buffer.clone()),
@@ -998,20 +974,14 @@ impl Vera {
             )
             .unwrap()
         };
-
-        let model_compute_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = model_compute_pipeline.layout();
-        let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
-            model_compute_pipeline_layout.set_layouts();
-
-        let model_compute_descriptor_set_layout_index: usize = 0;
-        let model_compute_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
-            descriptor_set_layouts
-                .get(model_compute_descriptor_set_layout_index)
-                .unwrap()
-                .clone();
         let model_compute_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
             &ds_allocator,
-            model_compute_descriptor_set_layout.clone(),
+            model_compute_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
             [
                 // WriteDescriptorSet::buffer(0, vsinput_buffer.clone()),
                 // WriteDescriptorSet::buffer(1, basevertex_buffer.clone()),
@@ -1028,7 +998,6 @@ impl Vera {
         )
         .unwrap();
 
-        let frames_in_flight: usize = images.len();
         let drawing_fences: Vec<Option<FenceSignalFuture<_>>> = (0..framebuffers.len()).map(|_| None).collect();
         let previous_drawing_fence_i: u32 = 0;
 
@@ -1036,10 +1005,6 @@ impl Vera {
 
         // Window-related updates
         // ----------------------
-        let previous_update_end: Option<Box<dyn GpuFuture>> =
-            Some(sync::now(device.clone()).boxed());
-        let previous_draw_end: Option<Box<dyn GpuFuture>> =
-            Some(sync::now(device.clone()).boxed());
         let recreate_swapchain: bool = false;
         let show_count: u32 = 0;
         let time: f32 = 0.0;
@@ -1049,16 +1014,13 @@ impl Vera {
         Vera {
             event_loop,
             vk: Vk {
-                //
-                library,
-                required_extensions,
-                instance,
-                surface,
+                _library,
+                _instance,
+                _surface,
                 window,
 
-                device_extensions,
-                physical_device,
-                queue_family_index,
+                _physical_device,
+                _queue_family_index,
                 device,
                 queue,
 
@@ -1073,30 +1035,21 @@ impl Vera {
                 ds_allocator,
 
 
-                previous_update_end,
-                previous_draw_end,
                 recreate_swapchain,
                 show_count,
                 time,
 
 
-                draw_descriptor_set,
-                draw_descriptor_set_layout,
-                draw_descriptor_set_layout_index,
                 draw_pipeline,
-                vertex_compute_descriptor_set,
-                vertex_compute_descriptor_set_layout,
-                vertex_compute_descriptor_set_layout_index,
+                draw_descriptor_set,
                 vertex_compute_pipeline,
-                model_compute_descriptor_set,
-                model_compute_descriptor_set_layout,
-                model_compute_descriptor_set_layout_index,
+                vertex_compute_descriptor_set,
                 model_compute_pipeline,
+                model_compute_descriptor_set,
 
 
                 drawing_vs,
                 drawing_fs,
-                frames_in_flight,
                 drawing_fences,
                 previous_drawing_fence_i,
 
@@ -1130,11 +1083,21 @@ impl Vera {
         }
     }
 
-    /// Resets vertex and uniform data from input, which is consumed.
+    /// Resets the animation data from `input`, which is consumed.
     /// 
     /// In heavy animations, resetting is useful for reducing the CPU/GPU usage if you split you animations in several parts.
     /// Also useful if called from a loop for hot-reloading.
     pub fn reset(&mut self, input: Input) {
+        // Clean previous fences data
+        for fence_index in 0..self.vk.drawing_fences.len() {
+            if let Some(image_fence) = &mut self.vk.drawing_fences[fence_index as usize] {
+                image_fence.wait(None).unwrap();
+                image_fence.cleanup_finished();
+            }
+        }
+
+
+        // Reset buffers data
         (
             (self.vk.background_color, self.vk.start_time, self.vk.end_time, self.vk.vertex_dispatch_len, self.vk.model_dispatch_len),
             (self.vk.general_push_cs, self.vk.general_push_vs, self.vk.general_push_transformer),
@@ -1153,6 +1116,78 @@ impl Vera {
                 self.vk.model_matrixtransformer_buffer,
             ),
         ) = from_input(self.vk.queue.clone(), self.vk.memory_allocator.clone(), &self.vk.cb_allocator, input);
+
+
+        // Update descriptor sets to point to the new buffers.
+        self.vk.draw_descriptor_set = PersistentDescriptorSet::new(
+            &self.vk.ds_allocator,
+            self.vk.draw_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
+            [
+                // WriteDescriptorSet::buffer(0, self.vk.vsinput_buffer.clone()),
+                // WriteDescriptorSet::buffer(1, self.vk.basevertex_buffer.clone()),
+                // WriteDescriptorSet::buffer(2, self.vk.vertex_matrixtransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(3, self.vk.vertex_matrixtransformation_buffer.clone()),
+                // WriteDescriptorSet::buffer(4, self.vk.vertex_colortransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(5, self.vk.vertex_colortransformation_buffer.clone()),
+                WriteDescriptorSet::buffer(6, self.vk.entity_buffer.clone()),
+                WriteDescriptorSet::buffer(7, self.vk.modelt_buffer.clone()),
+                // WriteDescriptorSet::buffer(8, self.vk.model_matrixtransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(9, self.vk.model_matrixtransformation_buffer.clone()),
+            ],
+            [],
+        )
+        .unwrap();
+        self.vk.vertex_compute_descriptor_set = PersistentDescriptorSet::new(
+            &self.vk.ds_allocator,
+            self.vk.vertex_compute_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
+            [
+                WriteDescriptorSet::buffer(0, self.vk.vsinput_buffer.clone()),
+                WriteDescriptorSet::buffer(1, self.vk.basevertex_buffer.clone()),
+                WriteDescriptorSet::buffer(2, self.vk.vertex_matrixtransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(3, self.vk.vertex_matrixtransformation_buffer.clone()),
+                WriteDescriptorSet::buffer(4, self.vk.vertex_colortransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(5, self.vk.vertex_colortransformation_buffer.clone()),
+                // WriteDescriptorSet::buffer(6, self.vk.entity_buffer.clone()),
+                // WriteDescriptorSet::buffer(7, self.vk.modelt_buffer.clone()),
+                // WriteDescriptorSet::buffer(8, self.vk.model_matrixtransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(9, self.vk.model_matrixtransformation_buffer.clone()),
+            ],
+            [],
+        )
+        .unwrap();
+        self.vk.model_compute_descriptor_set = PersistentDescriptorSet::new(
+            &self.vk.ds_allocator,
+            self.vk.model_compute_pipeline
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .clone(),
+            [
+                // WriteDescriptorSet::buffer(0, self.vk.vsinput_buffer.clone()),
+                // WriteDescriptorSet::buffer(1, self.vk.basevertex_buffer.clone()),
+                // WriteDescriptorSet::buffer(2, self.vk.vertex_matrixtransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(3, self.vk.vertex_matrixtransformation_buffer.clone()),
+                // WriteDescriptorSet::buffer(4, self.vk.vertex_colortransformer_buffer.clone()),
+                // WriteDescriptorSet::buffer(5, self.vk.vertex_colortransformation_buffer.clone()),
+                // WriteDescriptorSet::buffer(6, self.vk.entity_buffer.clone()),
+                WriteDescriptorSet::buffer(7, self.vk.modelt_buffer.clone()),
+                WriteDescriptorSet::buffer(8, self.vk.model_matrixtransformer_buffer.clone()),
+                WriteDescriptorSet::buffer(9, self.vk.model_matrixtransformation_buffer.clone()),
+            ],
+            [],
+        )
+        .unwrap();
     }
 
     /// Shows the animation form start to end once.
@@ -1177,7 +1212,7 @@ impl Vera {
         }
     }
 
-    pub fn save(&mut self, width: u32, height: u32) {
+    pub fn save(&mut self,/*  width: u32, height: u32 */) {
         match self.vk.show(&mut self.event_loop) { // , (width, height)
             0 => {
                 // Successfully finished
@@ -1244,10 +1279,10 @@ fn from_input(
     let general_push_transformer: (Transformer, Transformer) = (Transformer::from_t(view_t), Transformer::from_t(projection_t)); // (View, Projection)
 
 
-    static mut ENTITY_INDEX: u32 = 0;
-    static mut VERTEX_MATRIXTRANSFORMATION_OFFSET: u32 = 0;
-    static mut VERTEX_COLORTRANSFORMATION_OFFSET: u32 = 0;
-    static mut MODEL_MATRIXTRANSFORMATION_OFFSET: u32 = 0;
+    let mut entity_index: u32 = 0;
+    let mut vertex_matrixtransformation_offset: u32 = 0;
+    let mut vertex_colortransformation_offset: u32 = 0;
+    let mut model_matrixtransformation_offset: u32 = 0;
 
     let (
         mut basevertex_data,
@@ -1258,11 +1293,18 @@ fn from_input(
         mut vertex_colortransformer_data,
         mut model_matrixtransformation_data,
         mut model_matrixtransformer_data
-    ) = from_model(Model::from_models(m), 0);
+    ) = from_model(Model::from_models(m), 0, &mut entity_index, &mut vertex_matrixtransformation_offset, &mut vertex_colortransformation_offset, &mut model_matrixtransformation_offset);
 
-    fn from_model(model: Model, parent_id: u32) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>) {
-        let current_id= unsafe { ENTITY_INDEX };
-        unsafe { ENTITY_INDEX+=1; }
+    fn from_model(
+        model: Model,
+        parent_id: u32, 
+        entity_index: &mut u32,
+        vertex_matrixtransformation_offset: &mut u32,
+        vertex_colortransformation_offset: &mut u32,
+        model_matrixtransformation_offset: &mut u32,
+    ) -> (Vec<BaseVertex>, Vec<Entity>, Vec<MatrixTransformation>, Vec<MatrixTransformer>, Vec<ColorTransformation>, Vec<ColorTransformer>, Vec<MatrixTransformation>, Vec<MatrixTransformer>) {
+        let current_id= *entity_index;
+        *entity_index+=1;
 
         let mut basevertex: Vec<BaseVertex> = vec![];
         let mut entity: Vec<Entity> = vec![];
@@ -1274,8 +1316,8 @@ fn from_input(
     
         let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(model.t);
         let mmt_len = model_matrixtransformation.len() as u32;
-        let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET })];
-        unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET+=mmt_len; }
+        let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, *model_matrixtransformation_offset)];
+        *model_matrixtransformation_offset+=mmt_len;
 
         for v in model.vertices.into_iter() {
             basevertex.push(BaseVertex {
@@ -1287,14 +1329,14 @@ fn from_input(
             let gpu_tf = to_gpu_tf(v.t);
             let vmt_len = gpu_tf.len() as u32;
             vertex_matrixtransformation.extend(gpu_tf);
-            vertex_matrixtransformer.push(MatrixTransformer::from_lo(vmt_len, unsafe { VERTEX_MATRIXTRANSFORMATION_OFFSET }));
-            unsafe { VERTEX_MATRIXTRANSFORMATION_OFFSET+=vmt_len; }
+            vertex_matrixtransformer.push(MatrixTransformer::from_lo(vmt_len, *vertex_matrixtransformation_offset));
+            *vertex_matrixtransformation_offset+=vmt_len;
             
             let gpu_cl = to_gpu_cl(v.c);
             let vmt_len = gpu_cl.len() as u32;
             vertex_colortransformation.extend(gpu_cl);
-            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, unsafe { VERTEX_COLORTRANSFORMATION_OFFSET }, v.color));
-            unsafe { VERTEX_COLORTRANSFORMATION_OFFSET+=vmt_len; }
+            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, *vertex_colortransformation_offset, v.color));
+            *vertex_colortransformation_offset+=vmt_len;
         }
 
         // let range = entity[parent_id as usize];
@@ -1315,7 +1357,7 @@ fn from_input(
                 m_vertex_colortransformer,
                 m_model_matrixtransformation,
                 m_model_matrixtransformer
-            ) = from_model(m, current_id);
+            ) = from_model(m, current_id, entity_index, vertex_matrixtransformation_offset, vertex_colortransformation_offset, model_matrixtransformation_offset);
 
             basevertex.extend(m_basevertex);
             entity.extend(m_entity);
@@ -1395,9 +1437,9 @@ fn from_input(
         basevertex_data.len() == vertex_matrixtransformer_data.len() &&
         basevertex_data.len() == vertex_colortransformer_data.len() &&
         entity_data.len() > 0 &&
-        entity_data.len() == (unsafe { ENTITY_INDEX }) as usize &&
+        entity_data.len() == (entity_index) as usize &&
         entity_data.len() <= model_matrixtransformer_data.len() &&
-        model_matrixtransformer_data.len() < (unsafe { ENTITY_INDEX }) as usize + 64,
+        model_matrixtransformer_data.len() < (entity_index) as usize + 64,
         "incoherent buffers lengths"
     );
     
@@ -1521,10 +1563,10 @@ fn from_input(
     println!("vertex_colortransformer size: {}", vertex_colortransformer_buffer.size());
     println!("model_matrixtransformation size: {}", model_matrixtransformation_buffer.size());
     println!("model_matrixtransformer size: {}", model_matrixtransformer_buffer.size());
-    println!("ENTITY_INDEX: {}", unsafe { ENTITY_INDEX });
-    println!("VERTEX_MATRIXTRANSFORMATION_OFFSET: {}", unsafe { VERTEX_MATRIXTRANSFORMATION_OFFSET });
-    println!("VERTEX_COLORTRANSFORMATION_OFFSET: {}", unsafe { VERTEX_COLORTRANSFORMATION_OFFSET });
-    println!("MODEL_MATRIXTRANSFORMATION_OFFSET: {}", unsafe { MODEL_MATRIXTRANSFORMATION_OFFSET });
+    println!("entity_index: {}", entity_index);
+    println!("vertex_matrixtransformation_offset: {}", vertex_matrixtransformation_offset);
+    println!("vertex_colortransformation_offset: {}", vertex_colortransformation_offset);
+    println!("model_matrixtransformation_offset: {}", model_matrixtransformation_offset);
 
     (
         (meta.bg, meta.start, meta.end, vertex_dispatch_len, model_dispatch_len),
@@ -1581,7 +1623,7 @@ fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
     for cl in t.into_iter() {
         let (ty, val) = match cl.c {
             Colorization::ToColor(r, g, b, a) => (0, [r, g, b, a]),
-            _ => { println!("Vertex colorization not implemented, ignoring."); continue; },
+            // _ => { println!("Vertex colorization not implemented, ignoring."); continue; },
         };
         let evolution = match cl.e {
             Evolution::Linear => 0,
@@ -1674,116 +1716,117 @@ where
     buffer
 }
 impl Vk {
-    /// Updates the buffers and draws a frame.
-    fn draw(&mut self) {
-        let image_extent: [u32; 2] = self.window.inner_size().into();
+    fn recreate_swapchain(&mut self, image_extent: [u32; 2]) {
+        self.recreate_swapchain = false;
 
-        if image_extent.contains(&0) {
-            return;
-        }
+        (self.swapchain, self.images) = self
+            .swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent,
+                ..self.swapchain.create_info()
+            })
+            .expect("failed to recreate swapchain");
 
-        if self.recreate_swapchain {
-            self.recreate_swapchain = false;
+        let extent = self.images[0].extent();
+        
 
-            (self.swapchain, self.images) = self
-                .swapchain
-                .recreate(SwapchainCreateInfo {
-                    image_extent,
-                    ..self.swapchain.create_info()
-                })
-                .expect("failed to recreate swapchain");
-
-            let extent = self.images[0].extent();
-            
-
-            let depth_attachment = ImageView::new_default(
-                Image::new(
-                    self.memory_allocator.clone(),
-                    ImageCreateInfo {
-                        image_type: ImageType::Dim2d,
-                        format: Format::D16_UNORM,
-                        extent: self.images[0].extent(),
-                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo::default(),
-                )
-                .unwrap(),
+        let depth_attachment = ImageView::new_default(
+            Image::new(
+                self.memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent: self.images[0].extent(),
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
             )
-            .unwrap();
+            .unwrap(),
+        )
+        .unwrap();
 
-            self.framebuffers = self
-                .images
-                .iter()
-                .map(|image| {
-                    let view = ImageView::new_default(image.clone()).unwrap();
-                    Framebuffer::new(
-                        self.render_pass.clone(),
-                        FramebufferCreateInfo {
-                            attachments: vec![view, depth_attachment.clone()],
-                            ..Default::default()
-                        },
-                    )
-                    .unwrap()
-                })
-                .collect::<Vec<_>>();
-
-            self.draw_pipeline = {
-                let vertex_input_state = BaseVertex::per_vertex()
-                    .definition(&self.drawing_vs.info().input_interface)
-                    .unwrap();
-                let stages = [
-                    PipelineShaderStageCreateInfo::new(self.drawing_vs.clone()),
-                    PipelineShaderStageCreateInfo::new(self.drawing_fs.clone()),
-                ];
-                let layout = PipelineLayout::new(
-                    self.device.clone(),
-                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                        .into_pipeline_layout_create_info(self.device.clone())
-                        .unwrap(),
-                )
-                .unwrap();
-                let subpass = Subpass::from(self.render_pass.clone(), 0).unwrap();
-
-                GraphicsPipeline::new(
-                    self.device.clone(),
-                    None,
-                    GraphicsPipelineCreateInfo {
-                        stages: stages.into_iter().collect(),
-                        vertex_input_state: Some(vertex_input_state),
-                        input_assembly_state: Some(InputAssemblyState::default()),
-                        viewport_state: Some(ViewportState {
-                            viewports: [Viewport {
-                                offset: [0.0, 0.0],
-                                extent: [extent[0] as f32, extent[1] as f32],
-                                depth_range: 0.0..=1.0,
-                            }]
-                            .into_iter()
-                            .collect(),
-                            ..Default::default()
-                        }),
-                        rasterization_state: Some(RasterizationState::default()),
-                        multisample_state: Some(MultisampleState::default()),
-                        color_blend_state: Some(ColorBlendState::with_attachment_states(
-                            subpass.num_color_attachments(),
-                            ColorBlendAttachmentState {
-                                blend: Some(AttachmentBlend::alpha()),
-                                ..Default::default()
-                            },
-                        )),
-                        subpass: Some(subpass.into()),
-                        depth_stencil_state: Some(DepthStencilState {
-                            depth: Some(DepthState::simple()),
-                            ..Default::default()
-                        }),
-                        ..GraphicsPipelineCreateInfo::layout(layout)
+        self.framebuffers = self
+            .images
+            .iter()
+            .map(|image| {
+                let view = ImageView::new_default(image.clone()).unwrap();
+                Framebuffer::new(
+                    self.render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![view, depth_attachment.clone()],
+                        ..Default::default()
                     },
                 )
                 .unwrap()
-            };
+            })
+            .collect::<Vec<_>>();
+
+        self.draw_pipeline = {
+            let vertex_input_state = BaseVertex::per_vertex()
+                .definition(&self.drawing_vs.info().input_interface)
+                .unwrap();
+            let stages = [
+                PipelineShaderStageCreateInfo::new(self.drawing_vs.clone()),
+                PipelineShaderStageCreateInfo::new(self.drawing_fs.clone()),
+            ];
+            let layout = PipelineLayout::new(
+                self.device.clone(),
+                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                    .into_pipeline_layout_create_info(self.device.clone())
+                    .unwrap(),
+            )
+            .unwrap();
+            let subpass = Subpass::from(self.render_pass.clone(), 0).unwrap();
+
+            GraphicsPipeline::new(
+                self.device.clone(),
+                None,
+                GraphicsPipelineCreateInfo {
+                    stages: stages.into_iter().collect(),
+                    vertex_input_state: Some(vertex_input_state),
+                    input_assembly_state: Some(InputAssemblyState::default()),
+                    viewport_state: Some(ViewportState {
+                        viewports: [Viewport {
+                            offset: [0.0, 0.0],
+                            extent: [extent[0] as f32, extent[1] as f32],
+                            depth_range: 0.0..=1.0,
+                        }]
+                        .into_iter()
+                        .collect(),
+                        ..Default::default()
+                    }),
+                    rasterization_state: Some(RasterizationState::default()),
+                    multisample_state: Some(MultisampleState::default()),
+                    color_blend_state: Some(ColorBlendState::with_attachment_states(
+                        subpass.num_color_attachments(),
+                        ColorBlendAttachmentState {
+                            blend: Some(AttachmentBlend::alpha()),
+                            ..Default::default()
+                        },
+                    )),
+                    subpass: Some(subpass.into()),
+                    depth_stencil_state: Some(DepthStencilState {
+                        depth: Some(DepthState::simple()),
+                        ..Default::default()
+                    }),
+                    ..GraphicsPipelineCreateInfo::layout(layout)
+                },
+            )
+            .unwrap()
+        };
+    }
+
+    /// Cleans resources, updates buffers and draws a frame.
+    fn draw(&mut self) {
+        let image_extent: [u32; 2] = self.window.inner_size().into();
+        if image_extent.contains(&0) {
+            return;
+        }
+        if self.recreate_swapchain {
+            self.recreate_swapchain(image_extent);
         }
 
-        // Acquire information on the next swapchain target.
         let (image_index, suboptimal, acquire_future) = match acquire_next_image(
             self.swapchain.clone(),
             None, // timeout
@@ -1796,19 +1839,12 @@ impl Vk {
             self.recreate_swapchain = true;
         }
 
-        // If this image buffer already has a future then attempt to cleanup fence
-        // resources. Usually the future for this index will have completed by the time we
-        // are rendering it again.
         if let Some(image_fence) = &mut self.drawing_fences[image_index as usize] {
             image_fence.cleanup_finished();
         }
 
-        // If the previous image has a fence then use it for synchronization, else create
-        // a new one.
         let previous_future = match self.drawing_fences[self.previous_drawing_fence_i as usize].take() {
-            // Ensure current frame is synchronized with previous.
             Some(fence) => fence.boxed(),
-            // Create new future to guarentee synchronization with (fake) previous frame.
             None => sync::now(self.device.clone()).boxed(),
         };
 
@@ -1819,7 +1855,6 @@ impl Vk {
         self.general_push_vs = VSGeneral {
             mat: mat.0,
         };
-
 
 
         let mut builder = AutoCommandBufferBuilder::primary(
@@ -1873,7 +1908,7 @@ impl Vk {
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
                 self.draw_pipeline.layout().clone(),
-                self.draw_descriptor_set_layout_index as u32,
+                0,
                 self.draw_descriptor_set.clone(),
             )
             .unwrap()
@@ -1889,7 +1924,6 @@ impl Vk {
 
         let command_buffer = builder.build().unwrap();
 
-        println!("1");
         let future = previous_future
             .join(acquire_future)
             .then_execute(self.queue.clone(), command_buffer)
@@ -1899,19 +1933,13 @@ impl Vk {
                 SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_index),
             )
             .then_signal_fence_and_flush();
+        println!("0");
 
-
-        println!("2");
-        // Update this frame's future with current fence.
         self.drawing_fences[image_index as usize] = match future.map_err(Validated::unwrap) {
-            // Success, store result into vector.
             Ok(future) => Some(future),
-
-            // Unknown failure.
             Err(e) => panic!("failed to flush future: {e}"),
         };
         self.previous_drawing_fence_i = image_index;
-        println!("3");
     }
 
     /// Runs the animation in the window in real-time.
@@ -1920,9 +1948,9 @@ impl Vk {
         event_loop: &mut EventLoop<()>,
         // save: (u32, u32),
     ) -> i32 {
-        println!("♻ --- {}: Showing with updated data.", self.show_count);
+        println!("\n♻ --- {}: Showing with updated data.\n", self.show_count);
+        let mut max_elapsed = true;
         let start = Instant::now();
-        let mut max_elapsed: bool = true;
         event_loop.run_return(move |event, _, control_flow| match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -1937,20 +1965,20 @@ impl Vk {
                 self.recreate_swapchain = true;
             }
             Event::MainEventsCleared => {
-                self.time = start.elapsed().as_secs_f32() + self.start_time;
-                self.general_push_cs = CSGeneral { time: self.time };
-                // if elements.ended() {
-                //     *control_flow = ControlFlow::ExitWithCode(0);
-                // }
-                if self.time > self.end_time {
-                    if max_elapsed {
-                        max_elapsed = false;
-                        self.show_count += 1;
+                if max_elapsed {
+                    self.time = start.elapsed().as_secs_f32() + self.start_time;
+                    self.general_push_cs = CSGeneral { time: self.time };
+                    // if elements.ended() {
+                    //     *control_flow = ControlFlow::ExitWithCode(0);
+                    // }
+                    if self.time > self.end_time {
+                            max_elapsed = false;
+                            self.show_count += 1;
+                        *control_flow = ControlFlow::ExitWithCode(0);
                     }
-                    *control_flow = ControlFlow::ExitWithCode(0);
+                    self.draw();
+                    // if save.0 > 0 && save.0 > 0 { self.encode(); }
                 }
-                self.draw();
-                // if save.0 > 0 && save.0 > 0 { self.encode(); }
             }
             _ => (),
         })
