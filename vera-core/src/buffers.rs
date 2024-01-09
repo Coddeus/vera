@@ -143,7 +143,7 @@ pub(crate) struct CSGeneral {
 #[derive(Debug, Clone, BufferContents)]
 #[repr(C)]
 pub(crate) struct VSGeneral {
-    /// The vpr matrix
+    /// The vpr matrix (view, projection, resolution)
     pub(crate) mat: [f32 ; 16],
 }
 // impl Default for GeneralData {

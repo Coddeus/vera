@@ -126,10 +126,6 @@ struct Vk {
     model_compute_descriptor_set: Arc<PersistentDescriptorSet>,
     model_compute_descriptor_set_layout: Arc<DescriptorSetLayout>,
     model_compute_descriptor_set_layout_index: usize,
-    empty_compute_pipeline: Arc<ComputePipeline>,
-    empty_compute_descriptor_set: Arc<PersistentDescriptorSet>,
-    empty_compute_descriptor_set_layout: Arc<DescriptorSetLayout>,
-    empty_compute_descriptor_set_layout_index: usize,
 
     drawing_vs: EntryPoint,
     drawing_fs: EntryPoint,
@@ -173,37 +169,6 @@ struct Vk {
 
     model_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]>,
     model_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]>,
-}
-
-mod empty_cs  {
-    vulkano_shaders::shader! {
-        ty: "compute",
-        src: r"
-        #version 460
-        #define PI 3.1415926535
-
-        layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-        struct BaseVertex {
-            vec4 position;
-            vec4 color;
-            uint entity_id; // Index in t.d
-        };
-
-        layout( push_constant ) uniform GeneralInfo {
-            float time;
-        } gen;
-
-        layout(set = 0, binding = 0) buffer OutputVertices {
-            BaseVertex d[];
-        } ov;
-
-        void main() {
-            ov.d[gl_GlobalInvocationID.x].position.x+=0.01;
-            ov.d[gl_GlobalInvocationID.x].position.y+=0.01;
-        }
-    "
-    }
 }
 
 mod vertex_cs {
@@ -872,10 +837,6 @@ impl Vera {
             .unwrap()
             .entry_point("main")
             .expect("failed to create fragment shader module");
-        let empty_cs = empty_cs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .expect("failed to create vertex compute shader module");
         let vertex_cs = vertex_cs::load(device.clone())
             .unwrap()
             .entry_point("main")
@@ -974,7 +935,6 @@ impl Vera {
         .unwrap();
 
 
-
         let vertex_compute_pipeline: Arc<ComputePipeline> = {
             let stage = PipelineShaderStageCreateInfo::new(vertex_cs);
             let layout = PipelineLayout::new(
@@ -1022,7 +982,6 @@ impl Vera {
         .unwrap();
 
 
-
         let model_compute_pipeline: Arc<ComputePipeline> = {
             let stage = PipelineShaderStageCreateInfo::new(model_cs);
             let layout = PipelineLayout::new(
@@ -1064,45 +1023,6 @@ impl Vera {
                 WriteDescriptorSet::buffer(7, modelt_buffer.clone()),
                 WriteDescriptorSet::buffer(8, model_matrixtransformer_buffer.clone()),
                 WriteDescriptorSet::buffer(9, model_matrixtransformation_buffer.clone()),
-            ],
-            [],
-        )
-        .unwrap();
-
-
-
-        let empty_compute_pipeline: Arc<ComputePipeline> = {
-            let stage = PipelineShaderStageCreateInfo::new(empty_cs);
-            let layout = PipelineLayout::new(
-                device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
-                    .into_pipeline_layout_create_info(device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
-            ComputePipeline::new(
-                device.clone(),
-                None,
-                ComputePipelineCreateInfo::stage_layout(stage, layout),
-            )
-            .unwrap()
-        };
-
-        let empty_compute_pipeline_layout: &Arc<vulkano::pipeline::PipelineLayout> = empty_compute_pipeline.layout();
-        let descriptor_set_layouts: &[Arc<vulkano::descriptor_set::layout::DescriptorSetLayout>] =
-            empty_compute_pipeline_layout.set_layouts();
-
-        let empty_compute_descriptor_set_layout_index: usize = 0;
-        let empty_compute_descriptor_set_layout: Arc<vulkano::descriptor_set::layout::DescriptorSetLayout> =
-            descriptor_set_layouts
-                .get(empty_compute_descriptor_set_layout_index)
-                .unwrap()
-                .clone();
-        let empty_compute_descriptor_set: Arc<PersistentDescriptorSet> = PersistentDescriptorSet::new(
-            &ds_allocator,
-            empty_compute_descriptor_set_layout.clone(),
-            [
-                WriteDescriptorSet::buffer(0, vsinput_buffer.clone()),
             ],
             [],
         )
@@ -1172,10 +1092,6 @@ impl Vera {
                 model_compute_descriptor_set_layout,
                 model_compute_descriptor_set_layout_index,
                 model_compute_pipeline,
-                empty_compute_descriptor_set,
-                empty_compute_descriptor_set_layout,
-                empty_compute_descriptor_set_layout_index,
-                empty_compute_pipeline,
 
 
                 drawing_vs,
@@ -1812,10 +1728,6 @@ impl Vk {
                 })
                 .collect::<Vec<_>>();
 
-            // In the triangle example we use a dynamic viewport, as its a simple example. However in the
-            // teapot example, we recreate the pipelines with a hardcoded viewport instead. This allows the
-            // driver to optimize things, at the cost of slower window resizes.
-            // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
             self.draw_pipeline = {
                 let vertex_input_state = BaseVertex::per_vertex()
                     .definition(&self.drawing_vs.info().input_interface)
@@ -1903,10 +1815,11 @@ impl Vk {
 
         let mut mat: Mat4 = self.general_push_transformer.0.update_vp(self.time);
         mat.mult(self.general_push_transformer.1.update_vp(self.time));
+        mat.mult(Mat4::scale((image_extent[1] as f32 / image_extent[0] as f32).min(1.0), (image_extent[0] as f32 / image_extent[1] as f32).min(1.0), 1.0));
         self.general_push_vs = VSGeneral {
             mat: mat.0,
         };
-        
+
 
 
         let mut builder = AutoCommandBufferBuilder::primary(
@@ -1917,19 +1830,6 @@ impl Vk {
         .unwrap();
 
         builder
-            // .bind_pipeline_compute(self.empty_compute_pipeline.clone())
-            // .unwrap()
-            // .bind_descriptor_sets(
-            //     PipelineBindPoint::Compute,
-            //     self.empty_compute_pipeline.layout().clone(),
-            //     0,
-            //     self.empty_compute_descriptor_set.clone(),
-            // )
-            // .unwrap()
-            // .push_constants(self.empty_compute_pipeline.layout().clone(), 0, self.general_push_cs.clone())
-            // .unwrap()
-            // .dispatch([self.vertex_dispatch_len, 1, 1])
-            // .unwrap()
             .push_constants(self.vertex_compute_pipeline.layout().clone(), 0, self.general_push_cs.clone())
             .unwrap()
             .bind_pipeline_compute(self.vertex_compute_pipeline.clone())
