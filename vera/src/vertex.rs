@@ -117,7 +117,7 @@ impl Vertex {
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    /// Adds a new transformation with default speed evolution, start time and end time.
+    /// Adds a new transformation to this vertex with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn transform(mut self, transformation: Transformation) -> Self {
@@ -130,7 +130,7 @@ impl Vertex {
         self
     }
 
-    /// Adds a new color change with default speed evolution, start time and end time.
+    /// Adds a new color change to this vertex with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn recolor(mut self, colorization: Colorization) -> Self {

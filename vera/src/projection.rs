@@ -16,8 +16,7 @@ impl Projection {
         }
     }
 
-    
-    /// Adds a new transformation with default speed evolution, start time and end time.
+    /// Adds a new transformation to the overall projection with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn transform(mut self, transformation: Transformation) -> Self {

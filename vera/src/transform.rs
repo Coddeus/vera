@@ -23,8 +23,11 @@ pub enum Evolution {
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-/// Data for the transformation of a single vertex or shape.
-/// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
+/// Data for the transformation of a single vertex or model.
+/// 
+/// ⚠ The transformations logic order is the order they are added to the vertex or model. Rotation R after translation T will not result in the same thing as T after R (if non-null).  
+/// It may be different from the order in which they are applied, which depends on the start and end times of each transformation.  
+/// You can have several transformations happening simultaneously.
 pub struct Tf {
     /// The type & value of the transformation.
     pub t: Transformation,
@@ -32,12 +35,13 @@ pub struct Tf {
     pub e: Evolution,
     /// The start time of the transformation.
     pub start: f32,
-    /// The duration of the transformation.
+    /// The end time of the transformation.
     pub end: f32,
 }
 
-/// The available transformations
-/// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.
+/// The available transformations.  
+/// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.  
+/// Their doc lists the parameters as capital letters in the order they should be given.
 #[derive(Clone, Copy)]
 pub enum Transformation {
     /// Vertex/Model: A scale operation with the provided X, Y and Z scaling.
@@ -51,42 +55,45 @@ pub enum Transformation {
     /// Vertex/Model: A rotate operation around the Z axis with the provided counter-clockwise angle, in radians.
     RotateZ(f32),
 
-    /// View: 
+    /// View: A full definition of the camera with the X, Y and Z eye position (at which point the camera is), the X, Y and Z target position (which point the camera stares at), and an X, Y and Z "up" vector (to determine the camera roll).
     Lookat(f32, f32, f32, f32, f32, f32, f32, f32, f32),
-    /// View: 
-    Move(f32, f32, f32),
-    /// View: 
-    Pitch(f32),
-    /// View: 
-    Yaw(f32),
-    /// View: 
-    Roll(f32),
-
-    /// Projection: 
-    Orthographic(f32, f32, f32, f32, f32, f32),
-    /// Projection: 
+    // /// View: 
+    // Move(f32, f32, f32),
+    // /// View: 
+    // Pitch(f32),
+    // /// View: 
+    // Yaw(f32),
+    // /// View: 
+    // Roll(f32),
+    // 
+    // /// Projection: 
+    // Orthographic(f32, f32, f32, f32, f32, f32),
+    /// Projection: A perspective projection with a near screen with the L left limit, R right limit, B bottom limit and T top limit, at a distance N from the camera and a far screen at a distance F from the camera.
     Perspective(f32, f32, f32, f32, f32, f32),
 }
 
 // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-/// Data for the transformation of a single vertex or shape.
-/// You can have several transformations happening simultaneously, but the order of the transformations is likely important.
+/// Data for the colorization of a single vertex.
+/// 
+/// ⚠ The colorization logic order is the order they are added to the vertex or model.  
+/// It may be different from the order in which they are applied, which depends on the start and end times of each transformation.  
+/// You can have several transformations happening simultaneously.
 pub struct Cl {
-    /// The type & value of the transformation.
+    /// The type & value of the colorization.
     pub c: Colorization,
-    /// The speed evolution of the transformation.
+    /// The speed evolution of the colorization.
     pub e: Evolution,
-    /// The start time of the transformation.
+    /// The start time of the colorization.
     pub start: f32,
-    /// The duration of the transformation.
+    /// The end time of the colorization.
     pub end: f32,
 }
 
-/// The available transformations
-/// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.
+/// The available colorizations.  
+/// Their doc lists the parameters as capital letters in the order they should be given.
 #[derive(Clone, Copy)]
 pub enum Colorization {
-    /// Changes the current color to this new rgba color.
+    /// Changes the current color to this new RGBA color with rgba interpolation.
     ToColor(f32, f32, f32, f32),
 }

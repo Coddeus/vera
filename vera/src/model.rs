@@ -5,19 +5,17 @@ use crate::{
 };
 
 /// A model (a model is a shape).
-/// 1 model = 1 entity.  
-/// This is what `fn new()` of specific models return.  
-/// - `models` are the models contained inside of this one, each group of three `Vertex` forming a triangle.
-/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle.
+/// 1 model = 1 entity.   
+/// - `models` are the models contained inside of this one.
+/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle. Still, you can have the vertices of a same triangle belonging to different models, if you wish.
 /// - `t` are the runtime transformations of the model.
 pub struct Model {
     pub models: Vec<Model>,
     pub vertices: Vec<Vertex>,
     pub t: Vec<Tf>,
 }
-
 impl Model {
-    /// Merges several models into one single entity, with empty transformations.
+    /// Groups `vertices` and `models` in a new model, with empty transformations.
     pub fn from_vm(vertices: Vec<Vertex>, models: Vec<Model>) -> Self {
         Self {
             models,
@@ -25,7 +23,7 @@ impl Model {
             t: vec![],
         }
     }
-    /// Merges several models into one single entity, with empty transformations.
+    /// Groups `models` in a new model, with empty transformations.
     pub fn from_models(models: Vec<Model>) -> Self {
         Self {
             models,
@@ -33,7 +31,7 @@ impl Model {
             t: vec![],
         }
     }
-    /// Creates a single entity from the given vertices, with empty transformations.
+    /// Groups `vertices` in a new model, with empty transformations.
     /// The number of vertices should (most likely) be a multiple of 3.
     pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
         Self {
@@ -81,7 +79,7 @@ impl Model {
             .for_each(|m| {m.set_alpha(alpha);});
     }
 
-    /// Adds a new transformation with default speed evolution, start time and end time.
+    /// Adds a new transformation to this model with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn transform(mut self, transformation: Transformation) -> Self {
@@ -94,7 +92,7 @@ impl Model {
         self
     }
 
-    /// Adds a new color change with default speed evolution, start time and end time.
+    /// Adds a new color change to every descendant vertex, with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn recolor(mut self, colorization: Colorization) -> Self {
