@@ -313,7 +313,7 @@ mod vertex_cs {
             mat4 vertex_matrix_transformation(uint i) {
                 float adv = advancement(t.d[i].start, t.d[i].end, t.d[i].evolution);
                 if (t.d[i].ty==0) {
-                    return scale(t.d[i].val.x * adv, t.d[i].val.y * adv, t.d[i].val.z * adv);
+                    return scale(t.d[i].val.x * adv + 1.0 * (1.0-adv), t.d[i].val.y * adv + 1.0 * (1.0-adv), t.d[i].val.z * adv + 1.0 * (1.0-adv));
                 } else if (t.d[i].ty==1) {
                     return translate(t.d[i].val.x * adv, t.d[i].val.y * adv, t.d[i].val.z * adv);
                 } else if (t.d[i].ty==2) {
@@ -504,7 +504,7 @@ mod model_cs {
             mat4 model_matrix_transformation(uint i) {
                 float adv = advancement(m_t.d[i].start, m_t.d[i].end, m_t.d[i].evolution);
                 if (m_t.d[i].ty==0) {
-                    return scale(m_t.d[i].val.x * adv, m_t.d[i].val.y * adv, m_t.d[i].val.z * adv);
+                    return scale(m_t.d[i].val.x * adv + 1.0 * (1.0-adv), m_t.d[i].val.y * adv + 1.0 * (1.0-adv), m_t.d[i].val.z * adv + 1.0 * (1.0-adv));
                 } else if (m_t.d[i].ty==1) {
                     return translate(m_t.d[i].val.x * adv, m_t.d[i].val.y * adv, m_t.d[i].val.z * adv);
                 } else if (m_t.d[i].ty==2) {
@@ -1095,6 +1095,8 @@ impl Vera {
                 image_fence.cleanup_finished();
             }
         }
+
+        self.vk.recreate_swapchain();
 
 
         // Reset buffers data
@@ -1716,105 +1718,111 @@ where
     buffer
 }
 impl Vk {
-    fn recreate_swapchain(&mut self, image_extent: [u32; 2]) {
-        self.recreate_swapchain = false;
+    fn recreate_swapchain(&mut self) {
+        let image_extent: [u32; 2] = self.window.inner_size().into();
+        if image_extent.contains(&0) {
+            return;
+        }
+        if self.recreate_swapchain {
+            self.recreate_swapchain = false;
 
-        (self.swapchain, self.images) = self
-            .swapchain
-            .recreate(SwapchainCreateInfo {
-                image_extent,
-                ..self.swapchain.create_info()
-            })
-            .expect("failed to recreate swapchain");
+            (self.swapchain, self.images) = self
+                .swapchain
+                .recreate(SwapchainCreateInfo {
+                    image_extent,
+                    ..self.swapchain.create_info()
+                })
+                .expect("failed to recreate swapchain");
 
-        let extent = self.images[0].extent();
-        
+            let extent = self.images[0].extent();
+            
 
-        let depth_attachment = ImageView::new_default(
-            Image::new(
-                self.memory_allocator.clone(),
-                ImageCreateInfo {
-                    image_type: ImageType::Dim2d,
-                    format: Format::D16_UNORM,
-                    extent: self.images[0].extent(),
-                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-        self.framebuffers = self
-            .images
-            .iter()
-            .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
-                Framebuffer::new(
-                    self.render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![view, depth_attachment.clone()],
+            let depth_attachment = ImageView::new_default(
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: Format::D16_UNORM,
+                        extent: self.images[0].extent(),
+                        usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
                         ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+            self.framebuffers = self
+                .images
+                .iter()
+                .map(|image| {
+                    let view = ImageView::new_default(image.clone()).unwrap();
+                    Framebuffer::new(
+                        self.render_pass.clone(),
+                        FramebufferCreateInfo {
+                            attachments: vec![view, depth_attachment.clone()],
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap()
+                })
+                .collect::<Vec<_>>();
+
+            self.draw_pipeline = {
+                let vertex_input_state = BaseVertex::per_vertex()
+                    .definition(&self.drawing_vs.info().input_interface)
+                    .unwrap();
+                let stages = [
+                    PipelineShaderStageCreateInfo::new(self.drawing_vs.clone()),
+                    PipelineShaderStageCreateInfo::new(self.drawing_fs.clone()),
+                ];
+                let layout = PipelineLayout::new(
+                    self.device.clone(),
+                    PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
+                        .into_pipeline_layout_create_info(self.device.clone())
+                        .unwrap(),
+                )
+                .unwrap();
+                let subpass = Subpass::from(self.render_pass.clone(), 0).unwrap();
+
+                GraphicsPipeline::new(
+                    self.device.clone(),
+                    None,
+                    GraphicsPipelineCreateInfo {
+                        stages: stages.into_iter().collect(),
+                        vertex_input_state: Some(vertex_input_state),
+                        input_assembly_state: Some(InputAssemblyState::default()),
+                        viewport_state: Some(ViewportState {
+                            viewports: [Viewport {
+                                offset: [0.0, 0.0],
+                                extent: [extent[0] as f32, extent[1] as f32],
+                                depth_range: 0.0..=1.0,
+                            }]
+                            .into_iter()
+                            .collect(),
+                            ..Default::default()
+                        }),
+                        rasterization_state: Some(RasterizationState::default()),
+                        multisample_state: Some(MultisampleState::default()),
+                        color_blend_state: Some(ColorBlendState::with_attachment_states(
+                            subpass.num_color_attachments(),
+                            ColorBlendAttachmentState {
+                                blend: Some(AttachmentBlend::alpha()),
+                                ..Default::default()
+                            },
+                        )),
+                        subpass: Some(subpass.into()),
+                        depth_stencil_state: Some(DepthStencilState {
+                            depth: Some(DepthState::simple()),
+                            ..Default::default()
+                        }),
+                        ..GraphicsPipelineCreateInfo::layout(layout)
                     },
                 )
                 .unwrap()
-            })
-            .collect::<Vec<_>>();
-
-        self.draw_pipeline = {
-            let vertex_input_state = BaseVertex::per_vertex()
-                .definition(&self.drawing_vs.info().input_interface)
-                .unwrap();
-            let stages = [
-                PipelineShaderStageCreateInfo::new(self.drawing_vs.clone()),
-                PipelineShaderStageCreateInfo::new(self.drawing_fs.clone()),
-            ];
-            let layout = PipelineLayout::new(
-                self.device.clone(),
-                PipelineDescriptorSetLayoutCreateInfo::from_stages(&stages)
-                    .into_pipeline_layout_create_info(self.device.clone())
-                    .unwrap(),
-            )
-            .unwrap();
-            let subpass = Subpass::from(self.render_pass.clone(), 0).unwrap();
-
-            GraphicsPipeline::new(
-                self.device.clone(),
-                None,
-                GraphicsPipelineCreateInfo {
-                    stages: stages.into_iter().collect(),
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState::default()),
-                    viewport_state: Some(ViewportState {
-                        viewports: [Viewport {
-                            offset: [0.0, 0.0],
-                            extent: [extent[0] as f32, extent[1] as f32],
-                            depth_range: 0.0..=1.0,
-                        }]
-                        .into_iter()
-                        .collect(),
-                        ..Default::default()
-                    }),
-                    rasterization_state: Some(RasterizationState::default()),
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        subpass.num_color_attachments(),
-                        ColorBlendAttachmentState {
-                            blend: Some(AttachmentBlend::alpha()),
-                            ..Default::default()
-                        },
-                    )),
-                    subpass: Some(subpass.into()),
-                    depth_stencil_state: Some(DepthStencilState {
-                        depth: Some(DepthState::simple()),
-                        ..Default::default()
-                    }),
-                    ..GraphicsPipelineCreateInfo::layout(layout)
-                },
-            )
-            .unwrap()
-        };
+            };
+        }
     }
 
     /// Cleans resources, updates buffers and draws a frame.
@@ -1823,9 +1831,7 @@ impl Vk {
         if image_extent.contains(&0) {
             return;
         }
-        if self.recreate_swapchain {
-            self.recreate_swapchain(image_extent);
-        }
+        self.recreate_swapchain();
 
         let (image_index, suboptimal, acquire_future) = match acquire_next_image(
             self.swapchain.clone(),
@@ -1965,6 +1971,7 @@ impl Vk {
             }
             Event::MainEventsCleared => {
                 if max_elapsed {
+                    self.recreate_swapchain = true;
                     self.time = start.elapsed().as_secs_f32() + self.start_time;
                     self.general_push_cs = CSGeneral { time: self.time };
                     // if elements.ended() {
