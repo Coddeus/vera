@@ -342,12 +342,12 @@ mod vertex_cs {
                 for (uint i=tf.d[gl_GlobalInvocationID.x].range.x; i<tf.d[gl_GlobalInvocationID.x].range.y; i++) {
                     if (t.d[i].start<gen.time) {
                         mat4 mat = vertex_matrix_transformation(i);
-                        if (first && t.d[i].end<gen.time) {
-                            tf.d[gl_GlobalInvocationID.x].current *= mat;
-                            tf.d[gl_GlobalInvocationID.x].range.x += 1;
-                        } else {
-                            first = false;
-                        }
+                        // if (first && t.d[i].end<gen.time) {
+                        //     tf.d[gl_GlobalInvocationID.x].current *= mat;
+                        //     tf.d[gl_GlobalInvocationID.x].range.x += 1;
+                        // } else {
+                        //     first = false;
+                        // }
                         out_position *= mat;
                     }
                 }
@@ -359,12 +359,12 @@ mod vertex_cs {
                 for (uint i=cl.d[gl_GlobalInvocationID.x].range.x; i<cl.d[gl_GlobalInvocationID.x].range.y; i++) {
                     if (c.d[i].start<gen.time) {
                         vec4 vec = vertex_color_transformation(i, out_color);
-                        if (first && c.d[i].end<gen.time) {
-                            cl.d[gl_GlobalInvocationID.x].current = vec;
-                            cl.d[gl_GlobalInvocationID.x].range.x += 1;
-                        } else {
-                            first = false;
-                        }
+                        // if (first && c.d[i].end<gen.time) {
+                        //     cl.d[gl_GlobalInvocationID.x].current = vec;
+                        //     cl.d[gl_GlobalInvocationID.x].range.x += 1;
+                        // } else {
+                        //     first = false;
+                        // }
                         out_color = vec;
                     }
                 }
@@ -526,12 +526,12 @@ mod model_cs {
                 for (uint i=m_tf.d[entity_id].range.x; i<m_tf.d[entity_id].range.y; i++) {
                     if (m_t.d[i].start<gen.time) {
                         mat4 mat = model_matrix_transformation(i);
-                        if (first && m_t.d[i].end<gen.time) {
-                            m_tf.d[entity_id].current *= mat;
-                            m_tf.d[entity_id].range.x += 1;
-                        } else {
-                            first = false;
-                        }
+                        // if (first && m_t.d[i].end<gen.time) {
+                        //     m_tf.d[entity_id].current *= mat;
+                        //     m_tf.d[entity_id].range.x += 1;
+                        // } else {
+                        //     first = false;
+                        // }
                         out_model *= mat;
                     }
                 }
@@ -1933,7 +1933,6 @@ impl Vk {
                 SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_index),
             )
             .then_signal_fence_and_flush();
-        println!("0");
 
         self.drawing_fences[image_index as usize] = match future.map_err(Validated::unwrap) {
             Ok(future) => Some(future),
