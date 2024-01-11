@@ -10,7 +10,7 @@ This repository is split into:
     - `vera-core` for the (heavier) core engine ([crates.io](https://crates.io/crates/vera-core)),
     - `vera` for the code interface (should be the only one imported in the hot-reloaded library) ([crates.io](https://crates.io/crates/vera)),
 
-## Features (section will be replaced by the docs)
+## Features (section to be removed for the docs)
 - Draw anything out of triangles, by creating models from vertices, or by merging together several models you have already created.
 - Send metadata for the background color, start time, and end time of the animation.
 ---
