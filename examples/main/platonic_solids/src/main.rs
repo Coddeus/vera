@@ -2,11 +2,16 @@ use std::f32::consts::PI;
 
 use fastrand;
 
+use vera_core::Vera;
 use vera::{
     Input, View, Projection, Model, Vertex, Transformation, MetaInput, Evolution, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME, D_TRANSFORMATION_SPEED_EVOLUTION,
 };
 
-#[no_mangle]
+fn main() {
+    let mut v = Vera::init(get());
+    v.show();
+}
+
 fn get() -> Input {
 
     // Platonic life animation
@@ -553,41 +558,11 @@ fn get() -> Input {
         .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
     ;
 
-
-        
-        // .rotound(6., 64.38, 64.80, false)
-        // .rotound(2., 64.80, 65.12, true)
-        // .rotound(-2., 65.12, 65.44, false)
-        // .rotound(-6., 65.44, 65.76, true)
-
-        // 
-        // .rotound(2., 64.06, 64.38, true)
-        // .rotound(-2., 64.38, 64.80, false)
-        // .rotound(-6., 64.80, 65.12, true)
-        // .rotound(-6., 65.44, 65.76, true)
-
-        // 
-        // .rotound(2., 64.06, 64.38, true)
-        // .rotound(6., 64.38, 64.80, false)
-        // .rotound(6., 65.12, 65.44, false)
-        // .rotound(2., 65.44, 65.76, true)
-
-
-        // .rotound(-6., 64.06, 64.38, true)
-        // .rotound(-6., 64.80, 65.12, true)
-        // .rotound(-2., 65.12, 65.44, false)
-        // .rotound(2., 65.44, 65.76, true)
-
-        // .rotound(-6., 64.06, 64.38, true)
-        // .rotound(-2., 64.38, 64.80, false)
-        // .rotound(2., 64.80, 65.12, true)
-        // .rotound(6., 65.12, 65.44, false)
-
     Input {
         meta: MetaInput {
             bg: [0.1, 0., 0.1, 1.],
-            start: -10.,
-            end: 90.,
+            start: 0.,
+            end: 88.,
         },
         m: vec![
             Model::from_models(
@@ -654,7 +629,7 @@ trait Rot<T> {
 }
 
 impl Rot<Model> for Model {
-    // Rotates linearly by Pi around a y axis with an X offset from START to END CLOCKWISE
+    // Rotates linearly by pi around a y axis with an X offset from START to END CLOCKWISE
     fn rotound(self, x_offset: f32, start: f32, end: f32, cw: bool) -> Self {
         self
             .transform(Transformation::Translate(-x_offset, 0., 0.)).start_t(start).end_t(start)

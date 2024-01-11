@@ -1,0 +1,2 @@
+# This example
+An animation of platonic solids, typical usage of the model hierarchy system: create the solids moving polygons, then animate the solid without having to animate every polygon independantly

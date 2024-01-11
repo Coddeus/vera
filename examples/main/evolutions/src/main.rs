@@ -4,7 +4,7 @@ use vera::*;
 use vera_core::*;
 
 fn main() {
-    let mut v = Vera::create(get());
+    let mut v = Vera::init(get());
     unsafe {
         D_VERTEX_ALPHA = 1.0;
     }
@@ -28,7 +28,7 @@ fn get() -> Input {
 }
 
 fn circle(height: f32, evolution: Evolution) -> Model {
-    Model::from_merge(
+    Model::from_models(
         (0..100).map(|n| Model::from_vertices(vec![
             Vertex::new().pos(0.0, 0.0, 0.0),
             Vertex::new().pos((  n   as f32 / 50.0 * PI).cos() * 0.15, (  n   as f32 / 50.0 * PI).sin() * 0.15, 0.0),

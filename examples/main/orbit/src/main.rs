@@ -3,7 +3,7 @@ use vera_core::*;
 use fastrand;
 
 fn main() {
-    let mut v = Vera::create(get());
+    let mut v = Vera::init(get());
     unsafe {
         D_VERTEX_ALPHA = 1.0;
     }
@@ -20,7 +20,7 @@ fn get() -> Input {
         },
         m: (0..64)
             .map(|n| 
-                Model::from_merge(
+                Model::from_models(
                     vec![
                         Model::from_vertices(vec![
                             Vertex::new().pos(1.0, 1.0, 1.0),

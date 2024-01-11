@@ -55,18 +55,22 @@ pub use transform::*;
 pub struct Input {
     /// Metadata for the animation
     pub meta: MetaInput,
-    /// All models, with their transformations
+    /// All models, with their transformations.
     pub m: Vec<Model>,
     /// The view, with its transformations
     pub v: View,
     /// The projection, with its transformations
-    /// By default, the visible 3D frustrum corresponds to Transformation::Orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, -1.0)
+    // /// By default, the visible 3D frustrum corresponds to Transformation::Orthographic(-1.0, 1.0, -1.0, 1.0, 1.0, -1.0)
     pub p: Projection,
 }
 
+/// Meta-information about the animation
 pub struct MetaInput {
+    /// The background color.
     pub bg: [f32 ; 4],
+    /// The instant the animation starts.
     pub start: f32,
+    /// The instant the animation end.
     pub end: f32,
 }
 impl Default for MetaInput {

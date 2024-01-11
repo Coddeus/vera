@@ -20,7 +20,7 @@ use crate::{
 pub struct Vertex {
     // Sent to GPU
     /// The position of the vertex.
-    pub position: [f32; 3],
+    pub position: [f32; 4],
     /// The color of the vertex, in RGBA format.
     pub color: [f32; 4],
 
@@ -36,7 +36,12 @@ impl Vertex {
     pub fn new() -> Self {
         unsafe {
             Self {
-                position: super::D_VERTEX_POSITION,
+                position: [
+                    super::D_VERTEX_POSITION[0],
+                    super::D_VERTEX_POSITION[1],
+                    super::D_VERTEX_POSITION[2],
+                    1.0,
+                ],
                 color: if super::D_RANDOM_VERTEX_COLOR {
                     [f32(), f32(), f32(), super::D_VERTEX_ALPHA]
                 } else {
@@ -55,7 +60,7 @@ impl Vertex {
 
     /// Modifies the position of the vertex to (x, y, z).
     pub fn pos(mut self, x: f32, y: f32, z: f32) -> Self {
-        self.position = [x, y, z];
+        self.position = [x, y, z, 1.0];
         self
     }
 
@@ -112,7 +117,7 @@ impl Vertex {
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    /// Adds a new transformation with default speed evolution, start time and end time.
+    /// Adds a new transformation to this vertex with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn transform(mut self, transformation: Transformation) -> Self {
@@ -125,7 +130,7 @@ impl Vertex {
         self
     }
 
-    /// Adds a new color change with default speed evolution, start time and end time.
+    /// Adds a new color change to this vertex with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn recolor(mut self, colorization: Colorization) -> Self {

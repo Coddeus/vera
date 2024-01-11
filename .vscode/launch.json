@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        // Minimal Reproducible example (local)
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug mre",
+            "program": "${workspaceFolder}/target/debug/mre.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Release mre",
+            "program": "${workspaceFolder}/target/release/mre.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        // Another example
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Debug neo_rug",
+            "program": "${workspaceFolder}/target/debug/neo_rug.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "name": "Release neo_rug",
+            "program": "${workspaceFolder}/target/release/neo_rug.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

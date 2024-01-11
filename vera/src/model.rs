@@ -5,48 +5,81 @@ use crate::{
 };
 
 /// A model (a model is a shape).
-/// 1 model = 1 entity.  
-/// This is what `fn new()` of specific models return.  
-/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle.
+/// 1 model = 1 entity.   
+/// - `models` are the models contained inside of this one.
+/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle. Still, you can have the vertices of a same triangle belonging to different models, if you wish.
 /// - `t` are the runtime transformations of the model.
 pub struct Model {
+    pub models: Vec<Model>,
     pub vertices: Vec<Vertex>,
     pub t: Vec<Tf>,
 }
-
 impl Model {
-    /// Merges several models into one single entity, with empty transformations.
-    pub fn from_merge(models: Vec<Model>) -> Self {
+    /// Groups `vertices` and `models` in a new model, with empty transformations.
+    pub fn from_vm(vertices: Vec<Vertex>, models: Vec<Model>) -> Self {
         Self {
-            vertices: models
-                .into_iter()
-                .flat_map(move |model| model.vertices.into_iter())
-                .collect(),
-            t: vec![],
-        }
-    }
-    /// Creates a single entity from the given vertices, with empty transformations.
-    /// The number of vertices should (most likely) be a multiple of 3.
-    pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
-        Self {
+            models,
             vertices,
             t: vec![],
         }
     }
-    /// Sets the model rgb color values.
+    /// Groups `models` in a new model, with empty transformations.
+    pub fn from_models(models: Vec<Model>) -> Self {
+        Self {
+            models,
+            vertices: vec![],
+            t: vec![],
+        }
+    }
+    /// Groups `vertices` in a new model, with empty transformations.
+    /// The number of vertices should (most likely) be a multiple of 3.
+    pub fn from_vertices(vertices: Vec<Vertex>) -> Self {
+        Self {
+            models: vec![],
+            vertices,
+            t: vec![],
+        }
+    }
+    /// Sets the model's (and submodels') vertices rgb color values.
     pub fn rgb(mut self, red: f32, green: f32, blue: f32) -> Self {
         self.vertices
             .iter_mut()
             .for_each(|v| v.set_rgb(red, green, blue));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_rgb(red, green, blue);});
         self
     }
-    /// Sets the model opacity
+    /// Sets the model's (and submodels') vertices opacity
     pub fn alpha(mut self, alpha: f32) -> Self {
-        self.vertices.iter_mut().for_each(|v| v.set_alpha(alpha));
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_alpha(alpha));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_alpha(alpha);});
         self
+    }
+    /// Sets the model's (and submodels') vertices rgb color values.
+    pub fn set_rgb(&mut self, red: f32, green: f32, blue: f32) {
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_rgb(red, green, blue));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_rgb(red, green, blue);});
+    }
+    /// Sets the model's (and submodels') vertices opacity
+    pub fn set_alpha(&mut self, alpha: f32) {
+        self.vertices
+            .iter_mut()
+            .for_each(|v| v.set_alpha(alpha));
+        self.models
+            .iter_mut()
+            .for_each(|m| {m.set_alpha(alpha);});
     }
 
-    /// Adds a new transformation with default speed evolution, start time and end time.
+    /// Adds a new transformation to this model with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn transform(mut self, transformation: Transformation) -> Self {
@@ -59,7 +92,7 @@ impl Model {
         self
     }
 
-    /// Adds a new color change with default speed evolution, start time and end time.
+    /// Adds a new color change to every descendant vertex, with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn recolor(mut self, colorization: Colorization) -> Self {
