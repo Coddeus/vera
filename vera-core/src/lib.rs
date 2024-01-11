@@ -641,6 +641,7 @@ impl Vera {
                     height: 600,
                 })
                 .with_resizable(true)
+                .with_decorations(false)
                 .with_title("Vera")
                 .with_transparent(false)
                 .build(&event_loop)
@@ -2010,7 +2011,7 @@ impl Vk {
             }
             Event::MainEventsCleared => {
                 if max_elapsed {
-                    self.recreate_swapchain = true;
+                    // self.recreate_swapchain = true;
                     self.time = start.elapsed().as_secs_f32() + self.start_time;
                     self.general_push_cs = CSGeneral { time: self.time };
                     // if elements.ended() {

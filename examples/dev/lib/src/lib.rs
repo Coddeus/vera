@@ -12,8 +12,8 @@ fn get() -> Input {
     // Platonic life animation
 
     unsafe {
-        D_TRANSFORMATION_START_TIME = 0.;
-        D_TRANSFORMATION_END_TIME = 0.;
+        D_TRANSFORMATION_START_TIME = -100.;
+        D_TRANSFORMATION_END_TIME = -100.;
         D_TRANSFORMATION_SPEED_EVOLUTION = Evolution::FastMiddle;
     }
 
@@ -41,6 +41,7 @@ fn get() -> Input {
         
         .transform(Transformation::Scale(0.1, 0.1, 0.1))
         .transform(Transformation::Scale(10., 10., 10.)).start_t(1.).end_t(2.5)
+        .transform(Transformation::Scale(1.2, 1.2, 1.2)).start_t(71.74).end_t(72.30).evolution_t(Evolution::Linear)
 
         .transform(Transformation::RotateY(4.*PI)).start_t(2.).end_t(7.)
         .transform(Transformation::RotateX(-2.*PI)).start_t(2.).end_t(7.)
@@ -71,10 +72,23 @@ fn get() -> Input {
         .rotound(2., 61.03, 61.35, true)
         .rotound(6., 61.35, 61.67, false)
 
-        .rotound(6., 63.76, 64.08, false)
-        .rotound(2., 64.08, 64.40, true)
-        .rotound(-2., 64.40, 64.72, false)
-        .rotound(-6., 64.72, 65.04, true)
+        .rotound(6., 64.06, 64.38, false)
+        .rotound(2., 64.38, 64.80, true)
+        .rotound(-2., 64.80, 65.12, false)
+        .rotound(-6., 65.12, 65.44, true)
+
+        .transform(Transformation::Translate(0., -1., 0.)).start_t(67.05).end_t(67.33).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(68.17).end_t(68.45).evolution_t(Evolution::FastIn)
+
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(70.90).end_t(71.18).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(72.02).end_t(72.30).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.02).end_t(72.30).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., 2., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 7., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(72.86).end_t(73.14).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.86).end_t(73.14).evolution_t(Evolution::FastIn)
     ;
 
     let cube = Model::from_models(vec![
@@ -110,6 +124,7 @@ fn get() -> Input {
         
         .transform(Transformation::Scale(0.1, 0.1, 0.1))
         .transform(Transformation::Scale(10., 10., 10.)).start_t(8.25).end_t(9.75)
+        .transform(Transformation::RotateY(PI/4.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
 
         .transform(Transformation::RotateY(4.*PI)).start_t(9.25).end_t(14.25)
         .transform(Transformation::RotateX(-2.*PI)).start_t(9.25).end_t(14.25)
@@ -138,10 +153,19 @@ fn get() -> Input {
         .rotound(-2., 61.35, 61.67, false)
         .rotound(2., 61.67, 61.99, true)
 
-        .rotound(6., 63.76, 64.08, false)
-        .rotound(6., 64.40, 64.72, false)
-        .rotound(2., 64.72, 65.04, true)
-        .rotound(-2., 65.04, 65.36, false)
+        .rotound(6., 64.06, 64.38, false)
+        .rotound(6., 64.80, 65.12, false)
+        .rotound(2., 65.12, 65.44, true)
+        .rotound(-2., 65.44, 65.76, false)
+
+        .transform(Transformation::Translate(0., -1., 0.)).start_t(67.33).end_t(67.61).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(68.45).end_t(68.73).evolution_t(Evolution::FastIn)
+
+        .transform(Transformation::Translate(0., -2., 0.)).start_t(71.18).end_t(71.46).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 7., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(72.86).end_t(73.14).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(2., 0., 0.)).start_t(72.86).end_t(73.14).evolution_t(Evolution::FastIn)
     ;
 
     let octahedron = Model::from_models(vec![
@@ -219,10 +243,13 @@ fn get() -> Input {
         .rotound(6., 61.35, 61.67, false)
         .rotound(2., 61.67, 61.99, true)
         
-        .rotound(-2., 63.76, 64.08, false)
-        .rotound(-6., 64.08, 64.40, true)
-        .rotound(-6., 64.72, 65.04, true)
-        .rotound(-2., 65.04, 65.36, false)
+        .rotound(-2., 64.06, 64.38, false)
+        .rotound(-6., 64.38, 64.80, true)
+        .rotound(-6., 65.12, 65.44, true)
+        .rotound(-2., 65.44, 65.76, false)
+
+        .transform(Transformation::Translate(0., 3., 0.)).start_t(67.05).end_t(68.17).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., -3., 0.)).start_t(68.17).end_t(69.29).evolution_t(Evolution::FastOut)
 
     ;
 
@@ -337,10 +364,19 @@ fn get() -> Input {
         .rotound(-6., 61.03, 61.35, true)
         .rotound(-6., 61.67, 61.99, true)
         
-        .rotound(-2., 63.76, 64.08, false)
-        .rotound(2., 64.08, 64.40, true)
-        .rotound(6., 64.40, 64.72, false)
-        .rotound(6., 65.04, 65.36, false)
+        .rotound(-2., 64.06, 64.38, false)
+        .rotound(2., 64.38, 64.80, true)
+        .rotound(6., 64.80, 65.12, false)
+        .rotound(6., 65.44, 65.76, false)
+
+        .transform(Transformation::Translate(0., -1., 0.)).start_t(67.61).end_t(67.89).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(68.73).end_t(69.01).evolution_t(Evolution::FastIn)
+
+        .transform(Transformation::Translate(0., -2., 0.)).start_t(71.46).end_t(71.74).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 7., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
     ;
 
     let isocahedron = Model::from_models(vec![
@@ -479,6 +515,7 @@ fn get() -> Input {
 
         .transform(Transformation::Scale(0.07, 0.07, 0.07))
         .transform(Transformation::Scale(10., 10., 10.)).start_t(30.).end_t(31.5)
+        .transform(Transformation::RotateY(PI/5.)).start_t(71.74).end_t(72.30).evolution_t(Evolution::FastIn)
         
         .transform(Transformation::RotateY(4.*PI)).start_t(31.).end_t(36.)
         .transform(Transformation::RotateX(-2.*PI)).start_t(31.).end_t(36.)
@@ -497,47 +534,60 @@ fn get() -> Input {
         .rotound(-2., 61.35, 61.67, false)
         .rotound(-6., 61.67, 61.99, true)
         
-        .rotound(-6., 64.08, 64.40, true)
-        .rotound(-2., 64.40, 64.72, false)
-        .rotound(2., 64.72, 65.04, true)
-        .rotound(6., 65.04, 65.36, false)
+        .rotound(-6., 64.38, 64.80, true)
+        .rotound(-2., 64.80, 65.12, false)
+        .rotound(2., 65.12, 65.44, true)
+        .rotound(6., 65.44, 65.76, false)
+
+        .transform(Transformation::Translate(0., -1., 0.)).start_t(67.89).end_t(68.17).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(69.01).end_t(69.29).evolution_t(Evolution::FastIn)
+
+        .transform(Transformation::Translate(0., 1., 0.)).start_t(70.62).end_t(70.90).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(71.74).end_t(72.02).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(71.74).end_t(72.02).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., 2., 0.)).start_t(72.02).end_t(72.30).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.02).end_t(72.30).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(0., 7., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastIn)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.30).end_t(72.58).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(0., -5., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastOut)
+        .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
     ;
 
 
         
-        .rotound(6., 64.08, 64.40, true)
-        .rotound(2., 64.40, 64.72, false)
-        .rotound(-2., 64.72, 65.04, true)
-        .rotound(-6., 65.04, 65.36, false)
+        // .rotound(6., 64.38, 64.80, false)
+        // .rotound(2., 64.80, 65.12, true)
+        // .rotound(-2., 65.12, 65.44, false)
+        // .rotound(-6., 65.44, 65.76, true)
 
-        
-        .rotound(2., 63.76, 64.08, false)
-        .rotound(-2., 64.08, 64.40, true)
-        .rotound(-6., 64.40, 64.72, false)
-        .rotound(-6., 65.04, 65.36, false)
+        // 
+        // .rotound(2., 64.06, 64.38, true)
+        // .rotound(-2., 64.38, 64.80, false)
+        // .rotound(-6., 64.80, 65.12, true)
+        // .rotound(-6., 65.44, 65.76, true)
 
-        
-        .rotound(2., 63.76, 64.08, false)
-        .rotound(6., 64.08, 64.40, true)
-        .rotound(6., 64.72, 65.04, true)
-        .rotound(2., 65.04, 65.36, false)
+        // 
+        // .rotound(2., 64.06, 64.38, true)
+        // .rotound(6., 64.38, 64.80, false)
+        // .rotound(6., 65.12, 65.44, false)
+        // .rotound(2., 65.44, 65.76, true)
 
 
-        .rotound(-6., 63.76, 64.08, false)
-        .rotound(-6., 64.40, 64.72, false)
-        .rotound(-2., 64.72, 65.04, true)
-        .rotound(2., 65.04, 65.36, false)
+        // .rotound(-6., 64.06, 64.38, true)
+        // .rotound(-6., 64.80, 65.12, true)
+        // .rotound(-2., 65.12, 65.44, false)
+        // .rotound(2., 65.44, 65.76, true)
 
-        .rotound(-6., 63.76, 64.08, false)
-        .rotound(-2., 64.08, 64.40, true)
-        .rotound(2., 64.40, 64.72, false)
-        .rotound(6., 64.72, 65.04, true)
+        // .rotound(-6., 64.06, 64.38, true)
+        // .rotound(-2., 64.38, 64.80, false)
+        // .rotound(2., 64.80, 65.12, true)
+        // .rotound(6., 65.12, 65.44, false)
 
     Input {
         meta: MetaInput {
             bg: [0.1, 0., 0.1, 1.],
-            start: 59.75,
-            end: 70.,
+            start: -10.,
+            end: 90.,
         },
         m: vec![
             Model::from_models(
@@ -550,9 +600,10 @@ fn get() -> Input {
                 ]
             )
                 .transform(Transformation::RotateY(PI)).start_t(59.75).end_t(60.39).evolution_t(Evolution::Linear)
-                .transform(Transformation::RotateY(-PI)).start_t(63.2).end_t(63.76).evolution_t(Evolution::Linear)
-                .transform(Transformation::RotateY(PI)).start_t(67.17).end_t(67.73).evolution_t(Evolution::Linear)
-                .transform(Transformation::RotateY(-PI)).start_t(67.17).end_t(67.73).evolution_t(Evolution::Linear)
+                .transform(Transformation::RotateY(-PI)).start_t(63.42).end_t(64.06).evolution_t(Evolution::Linear)
+                .transform(Transformation::RotateY(-PI)).start_t(74.13).end_t(75.57).evolution_t(Evolution::FastOut)
+                .transform(Transformation::Scale(2., 2., 2.)).start_t(74.13).end_t(74.85).evolution_t(Evolution::FastIn)
+                .transform(Transformation::Scale(0., 0., 0.)).start_t(74.85).end_t(75.1).evolution_t(Evolution::FastIn)
         ],
         v: View::new()
             .transform(Transformation::Lookat(-8., 0., 6., -8., 0., 0., 0., 1., 0.))
@@ -574,13 +625,14 @@ fn get() -> Input {
             .transform(Transformation::Lookat(0., -5., 10., 0., 0., 0., 0., 1., 0.)).start_t(36.).end_t(37.).evolution_t(Evolution::FastIn)
 
             .transform(Transformation::Lookat(0., -10., 15., 0., 0., 0., 0., 1., 0.)).start_t(44.).end_t(45.).evolution_t(Evolution::FastIn)
-            .transform(Transformation::Lookat(-15., 10., 0., -3., 0., 0., 0., 1., 0.)).start_t(44.).end_t(46.).evolution_t(Evolution::FastMiddle)
-            .transform(Transformation::Lookat(0., 0., -18., 0., 0., 0., 0., 1., 0.)).start_t(44.).end_t(48.).evolution_t(Evolution::FastMiddle)
-            .transform(Transformation::Lookat(17., 0., -5., 3., 0., 0., 0., 1., 0.)).start_t(45.).end_t(50.).evolution_t(Evolution::FastMiddle)
-            .transform(Transformation::Lookat(18., 0., 0., 3., 3., 0., 0., 1., 0.)).start_t(46.).end_t(55.).evolution_t(Evolution::FastMiddle)
+            .transform(Transformation::Lookat(-12., 3., 0., -3., 0., 0., 0., 1., 0.)).start_t(44.).end_t(46.).evolution_t(Evolution::FastMiddle)
+            .transform(Transformation::Lookat(0., 0., -10., 0., 0., 0., 0., 1., 0.)).start_t(44.).end_t(48.).evolution_t(Evolution::FastMiddle)
+            .transform(Transformation::Lookat(15., 0., -5., 3., 0., 0., 0., 1., 0.)).start_t(44.).end_t(50.).evolution_t(Evolution::FastMiddle)
+            .transform(Transformation::Lookat(15., 0., 0., 3., 3., 0., 0., 1., 0.)).start_t(44.).end_t(55.).evolution_t(Evolution::FastMiddle)
             .transform(Transformation::Lookat(18., 0., 0., 0., 0., 0., 0., 1., 0.)).start_t(55.).end_t(56.).evolution_t(Evolution::FastIn)
 
             .transform(Transformation::Lookat(0., -5., 17., 0., 0., 0., 0., 1., 0.)).start_t(57.58).end_t(59.75).evolution_t(Evolution::FastMiddle)
+            .transform(Transformation::Lookat(0., -2.5, 8.5, 0., 0., 0., 0., 1., 0.)).start_t(71.74).end_t(73.14).evolution_t(Evolution::FastOut)
             ,
         p: Projection::new().transform(Transformation::Perspective(-1., 1., -1., 1., 2., 100.)),
     }
