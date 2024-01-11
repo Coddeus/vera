@@ -3,7 +3,6 @@ members = [
     "vera",
     "vera-core",
     "examples/main/*",
-    "mre",
 ]
 resolver = "2"
 

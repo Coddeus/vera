@@ -12,6 +12,7 @@ mod hot_lib {
 fn main() {
     let mut v = Vera::init(hot_lib::get());
 
+    // v.show();
     while v.show() {
         v.reset(hot_lib::get())
     }
