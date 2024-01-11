@@ -44,7 +44,7 @@ use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageUsage, ImageCreateInfo, ImageType};
+use vulkano::image::{Image, ImageUsage, ImageCreateInfo, ImageType, SampleCount};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::memory::allocator::{
     AllocationCreateInfo, FreeListAllocator, GenericMemoryAllocator, MemoryTypeFilter,
@@ -703,69 +703,48 @@ impl Vera {
         let cb_allocator = StandardCommandBufferAllocator::new(device.clone(), Default::default());
         let ds_allocator = StandardDescriptorSetAllocator::new(device.clone(), Default::default());
 
-        // ----------
+        // --------
 
-        let (swapchain, images) = {
-            let caps = _physical_device
-                .surface_capabilities(&_surface, Default::default())
-                .expect("failed to get surface capabilities");
+        let caps = _physical_device
+            .surface_capabilities(&_surface, Default::default())
+            .expect("failed to get surface capabilities");
+        let dimensions = window.inner_size();
+        let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
+        let image_format = _physical_device
+            .clone()
+            .surface_formats(&_surface, Default::default())
+            .unwrap()[0]
+            .0;
 
-            let dimensions = window.inner_size();
-            let composite_alpha = caps.supported_composite_alpha.into_iter().next().unwrap();
-            let image_format = _physical_device
-                .clone()
-                .surface_formats(&_surface, Default::default())
-                .unwrap()[0]
-                .0;
-
-            Swapchain::new(
-                device.clone(),
-                _surface.clone(),
-                SwapchainCreateInfo {
-                    min_image_count: caps.min_image_count.max(2),
-                    image_format,
-                    image_extent: dimensions.into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-                    composite_alpha,
-                    present_mode: PresentMode::Fifo,
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        };
-
-        let render_pass = vulkano::single_pass_renderpass!(
+        let (swapchain, images) = Swapchain::new(
             device.clone(),
-            attachments: {
-                color: {
-                    format: swapchain.image_format(), // set the format the same as the swapchain
-                    samples: 1, // TODOSAMPLES
-                    load_op: Clear,
-                    store_op: Store,
-                },
-                depth_stencil: {
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: DontCare,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {depth_stencil},
+            _surface.clone(),
+            SwapchainCreateInfo {
+                min_image_count: caps.min_image_count.max(2),
+                image_format,
+                image_extent: dimensions.into(),
+                image_usage: ImageUsage::TRANSFER_SRC
+                    | ImageUsage::TRANSFER_DST
+                    | ImageUsage::COLOR_ATTACHMENT
+                    | ImageUsage::STORAGE,
+                composite_alpha,
+                present_mode: PresentMode::Fifo,
+                ..Default::default()
             },
         )
         .unwrap();
-    
 
-        let depth_attachment = ImageView::new_default(
+        let extent: [u32; 3] = images[0].extent();
+
+        let msaa_image: Arc<ImageView> = ImageView::new_default(
             Image::new(
                 memory_allocator.clone(),
                 ImageCreateInfo {
                     image_type: ImageType::Dim2d,
-                    format: Format::D16_UNORM,
-                    extent: images[0].extent(),
-                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    format: swapchain.image_format(),
+                    extent,
+                    usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    samples: SampleCount::Sample8,
                     ..Default::default()
                 },
                 AllocationCreateInfo::default(),
@@ -774,14 +753,61 @@ impl Vera {
         )
         .unwrap();
 
+        let msaa_depth_attachment = ImageView::new_default(
+            Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent,
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    samples: SampleCount::Sample8,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        let render_pass = vulkano::single_pass_renderpass!(
+            device.clone(),
+            attachments: {
+                msaa_color: {
+                    format: swapchain.image_format(),
+                    samples: 8,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+                color: {
+                    format: swapchain.image_format(),
+                    samples: 1,
+                    load_op: DontCare,
+                    store_op: Store,
+                },
+                msaa_depth_stencil: {
+                    format: Format::D16_UNORM,
+                    samples: 8,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+            },
+            pass: {
+                color: [msaa_color],
+                color_resolve: [color],
+                depth_stencil: {msaa_depth_stencil},
+            },
+        )
+        .unwrap();
+
         let framebuffers: Vec<Arc<Framebuffer>> = images
             .iter()
             .map(|image| {
-                let view = ImageView::new_default(image.clone()).unwrap();
+                let final_view = ImageView::new_default(image.clone()).unwrap();
                 Framebuffer::new(
                     render_pass.clone(),
                     FramebufferCreateInfo {
-                        attachments: vec![view, depth_attachment.clone()],
+                        attachments: vec![msaa_image.clone(), final_view, msaa_depth_attachment.clone()],
                         ..Default::default()
                     },
                 )
@@ -859,22 +885,14 @@ impl Vera {
                 None,
                 GraphicsPipelineCreateInfo {
                     stages: stages.into_iter().collect(),
-                    // How vertex data is read from the vertex buffers into the vertex shader.
                     vertex_input_state: Some(vertex_input_state),
-                    // How vertices are arranged into primitive shapes.
-                    // The default primitive shape is a triangle.
                     input_assembly_state: Some(InputAssemblyState::default()),
-                    // How primitives are transformed and clipped to fit the framebuffer.
-                    // We use a resizable viewport, set to draw over the entire window.
                     viewport_state: Some(ViewportState::default()),
-                    // How polygons are culled and converted into a raster of pixels.
-                    // The default value does not perform any culling.
                     rasterization_state: Some(RasterizationState::default()),
-                    // How multiple fragment shader samples are converted to a single pixel value.
-                    // The default value does not perform any multisampling.
-                    multisample_state: Some(MultisampleState::default()),
-                    // How pixel values are combined with the values already present in the framebuffer.
-                    // The default value overwrites the old value with the new one, without any blending.
+                    multisample_state: Some(MultisampleState {
+                        rasterization_samples: subpass.num_samples().unwrap(),
+                        ..Default::default()
+                    }),
                     color_blend_state: Some(ColorBlendState::with_attachment_states(
                         subpass.num_color_attachments(),
                         ColorBlendAttachmentState {
@@ -1735,16 +1753,33 @@ impl Vk {
                 .expect("failed to recreate swapchain");
 
             let extent = self.images[0].extent();
-            
 
-            let depth_attachment = ImageView::new_default(
+            let msaa_image: Arc<ImageView> = ImageView::new_default(
+                Image::new(
+                    self.memory_allocator.clone(),
+                    ImageCreateInfo {
+                        image_type: ImageType::Dim2d,
+                        format: self.swapchain.image_format(),
+                        extent,
+                        usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                        samples: SampleCount::Sample8,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo::default(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+            let msaa_depth_attachment = ImageView::new_default(
                 Image::new(
                     self.memory_allocator.clone(),
                     ImageCreateInfo {
                         image_type: ImageType::Dim2d,
                         format: Format::D16_UNORM,
-                        extent: self.images[0].extent(),
+                        extent,
                         usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                        samples: SampleCount::Sample8,
                         ..Default::default()
                     },
                     AllocationCreateInfo::default(),
@@ -1757,11 +1792,11 @@ impl Vk {
                 .images
                 .iter()
                 .map(|image| {
-                    let view = ImageView::new_default(image.clone()).unwrap();
+                    let final_view = ImageView::new_default(image.clone()).unwrap();
                     Framebuffer::new(
                         self.render_pass.clone(),
                         FramebufferCreateInfo {
-                            attachments: vec![view, depth_attachment.clone()],
+                            attachments: vec![msaa_image.clone(), final_view, msaa_depth_attachment.clone()],
                             ..Default::default()
                         },
                     )
@@ -1804,7 +1839,10 @@ impl Vk {
                             ..Default::default()
                         }),
                         rasterization_state: Some(RasterizationState::default()),
-                        multisample_state: Some(MultisampleState::default()),
+                        multisample_state: Some(MultisampleState {
+                            rasterization_samples: subpass.num_samples().unwrap(),
+                            ..Default::default()
+                        }),
                         color_blend_state: Some(ColorBlendState::with_attachment_states(
                             subpass.num_color_attachments(),
                             ColorBlendAttachmentState {
@@ -1902,7 +1940,8 @@ impl Vk {
                 RenderPassBeginInfo {
                     clear_values: vec![
                         Some(self.background_color.into()),
-                        Some(1.0.into())
+                        None,
+                        Some(1.0.into()),
                     ],
                     ..RenderPassBeginInfo::framebuffer(self.framebuffers[image_index as usize].clone())
                 },
