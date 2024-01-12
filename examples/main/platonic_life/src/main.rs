@@ -571,7 +571,7 @@ fn get() -> Input {
                     cube,
                     octahedron,
                     dodecahedron,
-                    isocahedron,
+                    isocahedron, // The isocahedron vertex coordinates are approximated, i couldn't figure out the correct angles.
                 ]
             )
                 .transform(Transformation::RotateY(PI)).start_t(59.75).end_t(60.39).evolution_t(Evolution::Linear)
