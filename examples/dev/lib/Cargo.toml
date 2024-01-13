@@ -9,3 +9,4 @@ crate-type = ["rlib", "dylib"]
 [dependencies]
 vera = { path = "../../../vera" }
 fastrand = "2.0.1"
+itertools = "0.12.0"

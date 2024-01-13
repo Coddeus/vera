@@ -58,6 +58,16 @@ impl Vertex {
         }
     }
 
+    /// Returns a clone of the vertex, with empty transformations and colorizations.
+    pub fn clone(&self) -> Self {
+        Self {
+            position: self.position,
+            color: self.color,
+            t: vec![],
+            c: vec![],
+        }
+    } 
+
     /// Modifies the position of the vertex to (x, y, z).
     pub fn pos(mut self, x: f32, y: f32, z: f32) -> Self {
         self.position = [x, y, z, 1.0];

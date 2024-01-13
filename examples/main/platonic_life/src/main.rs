@@ -384,7 +384,7 @@ fn get() -> Input {
         .transform(Transformation::Translate(-2., 0., 0.)).start_t(72.58).end_t(72.86).evolution_t(Evolution::FastIn)
     ;
 
-    let isocahedron = Model::from_models(vec![
+    let icosahedron = Model::from_models(vec![
         polygon(3, [true, false, false])
             .transform(Transformation::RotateZ(-PI/2.))
             .transform(Transformation::RotateX(0.18))
@@ -571,7 +571,7 @@ fn get() -> Input {
                     cube,
                     octahedron,
                     dodecahedron,
-                    isocahedron, // The isocahedron vertex coordinates are approximated, i couldn't figure out the correct angles.
+                    icosahedron, // The icosahedron vertex coordinates are approximated, i couldn't figure out the correct angles.
                 ]
             )
                 .transform(Transformation::RotateY(PI)).start_t(59.75).end_t(60.39).evolution_t(Evolution::Linear)
