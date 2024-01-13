@@ -9,6 +9,7 @@ use crate::{
 /// - `models` are the models contained inside of this one.
 /// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle. Still, you can have the vertices of a same triangle belonging to different models, if you wish.
 /// - `t` are the runtime transformations of the model.
+#[derive(Debug)]
 pub struct Model {
     pub models: Vec<Model>,
     pub vertices: Vec<Vertex>,
@@ -40,6 +41,7 @@ impl Model {
             t: vec![],
         }
     }
+
     /// Sets the model's (and submodels') vertices rgb color values.
     pub fn rgb(mut self, red: f32, green: f32, blue: f32) -> Self {
         self.vertices
@@ -50,6 +52,7 @@ impl Model {
             .for_each(|m| {m.set_rgb(red, green, blue);});
         self
     }
+
     /// Sets the model's (and submodels') vertices opacity
     pub fn alpha(mut self, alpha: f32) -> Self {
         self.vertices
@@ -60,6 +63,7 @@ impl Model {
             .for_each(|m| {m.set_alpha(alpha);});
         self
     }
+
     /// Sets the model's (and submodels') vertices rgb color values.
     pub fn set_rgb(&mut self, red: f32, green: f32, blue: f32) {
         self.vertices
@@ -69,6 +73,7 @@ impl Model {
             .iter_mut()
             .for_each(|m| {m.set_rgb(red, green, blue);});
     }
+
     /// Sets the model's (and submodels') vertices opacity
     pub fn set_alpha(&mut self, alpha: f32) {
         self.vertices

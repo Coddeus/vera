@@ -1,5 +1,5 @@
 /// The evolution of a transformation or colorization.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Evolution {
     /// Constant speed from start to end.
     Linear,
@@ -28,6 +28,7 @@ pub enum Evolution {
 /// ⚠ The transformations logic order is the order they are added to the vertex or model. Rotation R after translation T will not result in the same thing as T after R (if non-null).  
 /// It may be different from the order in which they are applied, which depends on the start and end times of each transformation.  
 /// You can have several transformations happening simultaneously.
+#[derive(Clone, Copy, Debug)]
 pub struct Tf {
     /// The type & value of the transformation.
     pub t: Transformation,
@@ -42,7 +43,7 @@ pub struct Tf {
 /// The available transformations.  
 /// Their doc is prefixed with their general use case: Vertex/Model, View, Projection.  
 /// Their doc lists the parameters as capital letters in the order they should be given.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Transformation {
     /// Vertex/Model: A scale operation with the provided X, Y and Z scaling.
     Scale(f32, f32, f32),
@@ -79,6 +80,7 @@ pub enum Transformation {
 /// ⚠ The colorization logic order is the order they are added to the vertex or model.  
 /// It may be different from the order in which they are applied, which depends on the start and end times of each transformation.  
 /// You can have several transformations happening simultaneously.
+#[derive(Debug, Clone, Copy)]
 pub struct Cl {
     /// The type & value of the colorization.
     pub c: Colorization,
@@ -92,7 +94,7 @@ pub struct Cl {
 
 /// The available colorizations.  
 /// Their doc lists the parameters as capital letters in the order they should be given.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Colorization {
     /// Changes the current color to this new RGBA color with rgba interpolation.
     ToColor(f32, f32, f32, f32),

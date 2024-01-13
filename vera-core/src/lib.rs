@@ -641,7 +641,7 @@ impl Vera {
                     height: 600,
                 })
                 .with_resizable(true)
-                .with_decorations(false)
+                .with_decorations(true)         // TODOFEATURES
                 .with_title("Vera")
                 .with_transparent(false)
                 .build(&event_loop)
@@ -1360,15 +1360,10 @@ fn from_input(
             *vertex_colortransformation_offset+=vmt_len;
         }
 
-        // let range = entity[parent_id as usize];
-// 
-        // let ancestors = [range.ancestor_start; range.ancestor_end]
-
         entity.push(Entity {
             parent_id: Padded(parent_id),
         });
         for m in model.models.into_iter() {
-            println!("{current_id}");
             let (
                 m_basevertex,
                 m_entity,
@@ -1412,14 +1407,6 @@ fn from_input(
     let dummy_vertex = vsinput_data[0];
     let dummy_mat_t: MatrixTransformer = vertex_matrixtransformer_data[0];
     let dummy_vec_t = vertex_colortransformer_data[0];
-
-    for e in entity_data.iter() {
-        println!("{:?}", e);
-    }
-    for m in model_matrixtransformer_data.iter() {
-        println!("{:?}", m);
-    }
-    println!("{:?}", model_matrixtransformation_data);
     
     let diff = 64-(vsinput_data.len()%64);
     let mut vertex_dispatch_len = basevertex_data.len() as u32 / 64;
@@ -2011,7 +1998,7 @@ impl Vk {
             }
             Event::MainEventsCleared => {
                 if max_elapsed {
-                    // self.recreate_swapchain = true;
+                    self.recreate_swapchain = true;         // TODOFEATURES
                     self.time = start.elapsed().as_secs_f32() + self.start_time;
                     self.general_push_cs = CSGeneral { time: self.time };
                     // if elements.ended() {
