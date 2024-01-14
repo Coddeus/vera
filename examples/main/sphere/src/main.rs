@@ -21,43 +21,35 @@ fn get() -> Input {
         D_TRANSFORMATION_END_TIME = 0.;
     }
 
-    let sphere = 
-
-    geodesic_sphere(
-        icosahedron(), 4, 1., 5. // Frequencies can generally go over 100, it' sjust a bit of loading after that.
-    );
-
-    // // Limit testing:
-    // refine_sphere(
-    //     refine_sphere(
-    //         refine_sphere(
-    //             refine_sphere(
-    //                 refine_sphere(
-    //                     refine_sphere(
-    //                         geodesic_sphere(
-    //                             icosahedron(), 2, 1., 5.
-    //                         ), 2, 0., 1.
-    //                     ), 2, 1., 2.
-    //                 ), 2, 2., 3.
-    //             ), 2, 3., 4.
-    //         ), 2, 4., 5.
-    //     ), 2, 5., 6.
-    // );
+    // Frequencies can generally go over 100, it's just a bit of loading after that.
+    let sphere1 = geodesic_sphere(tetrahedron(), 20, 2., 5.); 
+    let sphere2 = geodesic_sphere(octahedron(), 20, 6., 9.);
+    let sphere3 = geodesic_sphere(icosahedron(), 20, 10., 13.);
 
     Input {
         meta: MetaInput {
             bg: [0.3, 0.3, 0.3, 0.3],
             start: 0.0,
-            end: 6.0,
+            end: 14.0,
         },
         m: vec![
-            sphere
-                // .transform(Transformation::Scale(10., 10., 10.)).start_t(0.).end_t(10.).evolution_t(Evolution::FastMiddle)
-                .transform(Transformation::RotateX(PI/3.))
-                .transform(Transformation::RotateY(PI/3.))
-                .transform(Transformation::RotateY(2.*PI)).start_t(0.0).end_t(7.0),
+            sphere1
+                .transform(Transformation::Scale(0.5, 0.5, 0.5)).start_t(0.0).end_t(0.0)
+                .transform(Transformation::Scale(2., 2., 2.)).start_t(1.0).end_t(2.0)
+                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(5.0).end_t(6.0)
+                .transform(Transformation::RotateY(2.*PI)).start_t(2.0).end_t(5.0),
+            sphere2
+                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+                .transform(Transformation::Scale(10., 10., 10.)).start_t(5.0).end_t(6.0)
+                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(9.0).end_t(10.0)
+                .transform(Transformation::RotateY(2.*PI)).start_t(6.0).end_t(9.0),
+            sphere3
+                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+                .transform(Transformation::Scale(10., 10., 10.)).start_t(9.0).end_t(10.0)
+                .transform(Transformation::Scale(0.2, 0.2, 0.2)).start_t(13.0).end_t(14.0)
+                .transform(Transformation::RotateY(2.*PI)).start_t(10.0).end_t(13.0),
         ],
-        v: View::new().transform(Transformation::Lookat(0., 0., -5., 0., 0., 0., 0., -1., 0.)), // -6 -> -17
+        v: View::new().transform(Transformation::Lookat(0., 0., -3., 0., 0., 0., 0., -1., 0.)),
         p: Projection::new().transform(Transformation::Perspective(-0.1, 0.1, -0.1, 0.1, 0.2, 100.)),
     }
 }
@@ -236,7 +228,9 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
         triangles
     }).collect();
     
-    Model::from_vertices(all_vertices)
+    let mut out = Model::from_vertices(all_vertices);
+    out.t = base_model.t;
+    out
 }
 
 // TODO Remove and specify the timing of each interior frequency to 
@@ -371,8 +365,35 @@ fn new_vertex_unprojected_cloned(v1: &Vertex, v2: &Vertex, v: u32, w: u32) -> Ve
     out.pos(x, y, z)
 }
 
+/// The base Tetrahedron
+fn tetrahedron() -> Model {
+    let mult = 1./3.0f32.sqrt();
+    Model::from_vertices(vec![
+        Vertex::new().pos(1., 1., 1.)   ,Vertex::new().pos(-1., -1., 1.)    ,Vertex::new().pos(-1., 1., -1.)    ,
+        Vertex::new().pos(1., 1., 1.)   ,Vertex::new().pos(-1., 1., -1.)    ,Vertex::new().pos(1., -1., -1.)    ,
+        Vertex::new().pos(1., 1., 1.)   ,Vertex::new().pos(1., -1., -1.)    ,Vertex::new().pos(-1., -1., 1.)      ,
+        Vertex::new().pos(-1., -1., 1.) ,Vertex::new().pos(-1., 1., -1.)    ,Vertex::new().pos(1., -1., -1.)    ,
+    ]).transform(Transformation::Scale(mult, mult, mult)).start_t(0.).end_t(0.)
+}
+
+/// The base Octahedron
+fn octahedron() -> Model {
+    Model::from_vertices(vec![
+        Vertex::new().pos(-1., 0., 0.)  ,Vertex::new().pos(0., 1., 0.)  ,Vertex::new().pos(0., 0., -1.) ,
+        Vertex::new().pos(-1., 0., 0.)  ,Vertex::new().pos(0., 0., -1.) ,Vertex::new().pos(0., -1., 0.) ,
+        Vertex::new().pos(-1., 0., 0.)  ,Vertex::new().pos(0., -1., 0.) ,Vertex::new().pos(0., 0., 1.)  ,
+        Vertex::new().pos(-1., 0., 0.)  ,Vertex::new().pos(0., 0., 1.)  ,Vertex::new().pos(0., 1., 0.)  ,
+
+        Vertex::new().pos(1., 0., 0.)   ,Vertex::new().pos(0., 1., 0.)  ,Vertex::new().pos(0., 0., -1.) ,
+        Vertex::new().pos(1., 0., 0.)   ,Vertex::new().pos(0., 0., -1.) ,Vertex::new().pos(0., -1., 0.) ,
+        Vertex::new().pos(1., 0., 0.)   ,Vertex::new().pos(0., -1., 0.) ,Vertex::new().pos(0., 0., 1.)  ,
+        Vertex::new().pos(1., 0., 0.)   ,Vertex::new().pos(0., 0., 1.)  ,Vertex::new().pos(0., 1., 0.)  ,
+    ])
+}
+
 /// The base Icosahedron
 fn icosahedron() -> Model {
+    let mult = 1./(PHI.powi(2)+1.).sqrt();
     Model::from_vertices(vec![
         Vertex::new().pos(0., 1., PHI)      ,Vertex::new().pos(1., PHI, 0.)     ,Vertex::new().pos(-1., PHI, 0.)    ,
         Vertex::new().pos(0., 1., PHI)      ,Vertex::new().pos(-1., PHI, 0.)    ,Vertex::new().pos(-PHI, 0., 1.)    ,
@@ -397,7 +418,7 @@ fn icosahedron() -> Model {
         Vertex::new().pos(PHI, 0., 1.)      ,Vertex::new().pos(PHI, 0., -1.)    ,Vertex::new().pos(1., PHI, 0.)     ,
         Vertex::new().pos(-PHI, 0., 1.)     ,Vertex::new().pos(-1., PHI, 0.)    ,Vertex::new().pos(-PHI, 0., -1.)   ,
         Vertex::new().pos(-PHI, 0., 1.)     ,Vertex::new().pos(-PHI, 0., -1.)   ,Vertex::new().pos(-1., -PHI, 0.)   ,
-    ])
+    ]).transform(Transformation::Scale(mult, mult, mult)).start_t(0.).end_t(0.)
 }
 
 
