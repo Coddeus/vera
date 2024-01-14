@@ -59,6 +59,16 @@ impl Vertex {
         }
     }
 
+    /// Creates a new vertex with the base position and color of `self`
+    pub fn duplicate(&self) -> Self{
+        Self {
+            position: self.position,
+            color: self.color,
+            t: vec![],
+            c: vec![],
+        }
+    }
+
     /// Modifies the position of the vertex to (x, y, z).
     pub fn pos(mut self, x: f32, y: f32, z: f32) -> Self {
         self.position = [x, y, z, 1.0];

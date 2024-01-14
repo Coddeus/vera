@@ -1,14 +1,20 @@
 use std::f32::consts::PI;
 
 use fastrand::f32;
-use vera::{Input, MetaInput, View, Projection, Transformation, Model, Vertex, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME, Colorization, Evolution};
+use vera::{Input, MetaInput, View, Projection, Transformation, Model, Vertex, D_TRANSFORMATION_START_TIME, D_TRANSFORMATION_END_TIME, Colorization/*, Evolution*/};
 
 const PHI: f32 = 1.618033988749;
 use itertools::Itertools;
+use vera_core::Vera;
+
 
 // [Geodesic polyhedra](https://en.wikipedia.org/wiki/Geodesic_polyhedron) are a nice way of approximating a sphere with triangles.
+// Overall followed the method of [Dirk Bertels's paper](https://www.dirkbertels.net/computing/pentaDome.php).
 
-#[no_mangle]
+fn main() {
+    let mut v = Vera::init(get());
+    v.show();
+}
 fn get() -> Input {
     unsafe {
         D_TRANSFORMATION_START_TIME = 0.;
