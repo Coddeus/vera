@@ -22,9 +22,41 @@ fn get() -> Input {
     }
 
     // Frequencies can generally go over 100, it's just a bit of loading after that.
-    let sphere1 = geodesic_sphere(tetrahedron(), 20, 2., 5.); 
-    let sphere2 = geodesic_sphere(octahedron(), 20, 6., 9.);
-    let sphere3 = geodesic_sphere(icosahedron(), 20, 10., 13.);
+    // let sphere1 = geodesic_sphere(tetrahedron(), 20, 2., 5.); 
+    // let sphere2 = geodesic_sphere(octahedron(), 20, 6., 9.);
+    // let sphere3 = geodesic_sphere(icosahedron(), 20, 10., 13.);
+
+    // println!("Sphere 1: Tetrahedron base");
+    // println!("- {} triangles.", sphere1.vertices.len()/3);
+    // println!("- {} vertices.", (sphere1.vertices.len()+4*3)/6); // Add the number of lacking vertices for hexagonal (6) division (here: 3 per tetrahedron corner, for the 4 corners. 12 anyway). The returned geodesic sphere's vertices are all present 6 times, except the vertices of the base platonic solid.
+
+    // println!("Sphere 2: Octahedron base");
+    // println!("- {} triangles.", sphere2.vertices.len()/3);
+    // println!("- {} vertices.", (sphere2.vertices.len()+6*2)/6);
+
+    // println!("Sphere 3: Icosahedron base");
+    // println!("- {} triangles.", sphere3.vertices.len()/3);
+    // println!("- {} vertices.", (sphere3.vertices.len()+12*1)/6);
+
+    let sphere1 = geodesic_sphere(icosahedron(), 1, 0., 0.);
+    let sphere2 = geodesic_sphere(icosahedron(), 2, 0., 0.);
+    let sphere3 = geodesic_sphere(icosahedron(), 3, 0., 0.);
+    let sphere4 = geodesic_sphere(icosahedron(), 4, 0., 0.);
+    let sphere5 = geodesic_sphere(icosahedron(), 5, 0., 0.);
+    let sphere6 = geodesic_sphere(icosahedron(), 6, 0., 0.);
+    let sphere7 = geodesic_sphere(icosahedron(), 7, 0., 0.);
+    let sphere8 = geodesic_sphere(icosahedron(), 8, 0., 0.);
+    let sphere9 = geodesic_sphere(icosahedron(), 9, 0., 0.);
+    let sphere10 = geodesic_sphere(icosahedron(), 10, 0., 0.);
+    let sphere11 = geodesic_sphere(icosahedron(), 11, 0., 0.);
+    let sphere12 = geodesic_sphere(icosahedron(), 12, 0., 0.);
+    let sphere13 = geodesic_sphere(icosahedron(), 13, 0., 0.);
+    let sphere14 = geodesic_sphere(icosahedron(), 14, 0., 0.);
+    let sphere15 = geodesic_sphere(icosahedron(), 15, 0., 0.);
+    let sphere16 = geodesic_sphere(icosahedron(), 16, 0., 0.);
+    let sphere17 = geodesic_sphere(icosahedron(), 17, 0., 0.);
+    let sphere18 = geodesic_sphere(icosahedron(), 18, 0., 0.);
+    let sphere19 = geodesic_sphere(icosahedron(), 19, 0., 0.);
 
     Input {
         meta: MetaInput {
@@ -33,21 +65,41 @@ fn get() -> Input {
             end: 14.0,
         },
         m: vec![
-            sphere1
-                .transform(Transformation::Scale(0.5, 0.5, 0.5)).start_t(0.0).end_t(0.0)
-                .transform(Transformation::Scale(2., 2., 2.)).start_t(1.0).end_t(2.0)
-                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(5.0).end_t(6.0)
-                .transform(Transformation::RotateY(2.*PI)).start_t(2.0).end_t(5.0),
-            sphere2
-                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
-                .transform(Transformation::Scale(10., 10., 10.)).start_t(5.0).end_t(6.0)
-                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(9.0).end_t(10.0)
-                .transform(Transformation::RotateY(2.*PI)).start_t(6.0).end_t(9.0),
-            sphere3
-                .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
-                .transform(Transformation::Scale(10., 10., 10.)).start_t(9.0).end_t(10.0)
-                .transform(Transformation::Scale(0.2, 0.2, 0.2)).start_t(13.0).end_t(14.0)
-                .transform(Transformation::RotateY(2.*PI)).start_t(10.0).end_t(13.0),
+            // sphere1
+            //     .transform(Transformation::Scale(0.5, 0.5, 0.5)).start_t(0.0).end_t(0.0)
+            //     .transform(Transformation::Scale(2., 2., 2.)).start_t(1.0).end_t(2.0)
+            //     .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(5.0).end_t(6.0)
+            //     .transform(Transformation::RotateY(2.*PI)).start_t(2.0).end_t(5.0),
+            // sphere2
+            //     .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+            //     .transform(Transformation::Scale(10., 10., 10.)).start_t(5.0).end_t(6.0)
+            //     .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(9.0).end_t(10.0)
+            //     .transform(Transformation::RotateY(2.*PI)).start_t(6.0).end_t(9.0),
+            // sphere3
+            //     .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+            //     .transform(Transformation::Scale(10., 10., 10.)).start_t(9.0).end_t(10.0)
+            //     .transform(Transformation::Scale(0.2, 0.2, 0.2)).start_t(13.0).end_t(14.0)
+            //     .transform(Transformation::RotateY(2.*PI)).start_t(10.0).end_t(13.0),
+
+            // sphere1,
+            // sphere2,
+            // sphere3,
+            // sphere4,
+            // sphere5,
+            // sphere6,
+            // sphere7,
+            sphere8,
+            // sphere9,
+            // sphere10,
+            // sphere11,
+            // sphere12,
+            // sphere13,
+            // sphere14,
+            // sphere15,
+            // sphere16,
+            // sphere17,
+            // sphere18,
+            // sphere19,
         ],
         v: View::new().transform(Transformation::Lookat(0., 0., -3., 0., 0., 0., 0., -1., 0.)),
         p: Projection::new().transform(Transformation::Perspective(-0.1, 0.1, -0.1, 0.1, 0.2, 100.)),
@@ -97,7 +149,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
         if base_triangle_i==0 { // First time, calculates the projection multipliers
 
             // Layer 0
-            vertices.push(v0.clone());
+            vertices.push(v0.clone().transform(Transformation::Scale(1., 1., 1.)).start_t(start).end_t(end));
             projection_multipliers.push(1.0);
     
             // Layers 1 to `frequency`-1
@@ -128,7 +180,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
             // Last layer
     
             // Point 0
-            vertices.push(v1.duplicate());
+            vertices.push(v1.duplicate().transform(Transformation::Scale(1., 1., 1.)).start_t(start).end_t(end));
             projection_multipliers.push(1.0);
             
             // Points 1 to penultimate
@@ -141,9 +193,27 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
             }
     
             // Last point
-            vertices.push(v2);
+            vertices.push(v2.transform(Transformation::Scale(1., 1., 1.)).start_t(start).end_t(end));
+            assert!(vertices.len()>0);
             projection_multipliers.push(1.0);
 
+            // indices of the vertices of the triangle (only one OR 1 in 3) that will be the biggest after projection.
+            if frequency>0 {
+                let most_projected_triangle_layer_i: usize = (frequency as isize/3*2-1 + frequency as isize%3) as usize;
+                let indices: (usize, usize, usize) = match most_projected_triangle_layer_i%2 {
+                    0 => (
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2,
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2 + most_projected_triangle_layer_i+1,
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2 + most_projected_triangle_layer_i+2,
+                    ),
+                    _ => (
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2,
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2 + 1,
+                        most_projected_triangle_layer_i*(most_projected_triangle_layer_i+2)/2 + most_projected_triangle_layer_i+2,
+                    ),
+                };
+                print_ratio(&vertices[indices.0], &vertices[indices.1], &vertices[indices.2], frequency);
+            }
         } else { // Every other time, optimized.
             // Layer 0
             vertices.push(v0.duplicate());
@@ -233,8 +303,50 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
     out
 }
 
-// TODO Remove and specify the timing of each interior frequency to 
-/// Same as geodesic_sphere, but expects `base_model` to be such a sphere. The difference is that no optimizations will be made here (although there could be, but different ones).
+/// Prints the ratio between the lowest point on the geodesic sphere and the sphere radius
+fn print_ratio(v1: &Vertex, v2: &Vertex, v3: &Vertex, freq: u32) {
+    let end_pos_1 = end_position(v1);
+    let end_pos_2 = end_position(v2);
+    let end_pos_3 = end_position(v3);
+
+    let max_dist = (end_pos_1[0].powi(2)+end_pos_1[1].powi(2)+end_pos_1[2].powi(2)).sqrt();
+    let min_dist = projected_origin_distance(end_pos_1, end_pos_2, end_pos_3);
+
+    assert!(min_dist<max_dist);
+
+    println!("Maximum projection ratio for frequency {}: {:02}", freq, min_dist/max_dist);
+}
+
+/// Finds the end position of a vertex which only transformation is a scale, uniform between the axis.
+fn end_position(v: &Vertex) -> [f32; 3] {
+    if let Transformation::Scale(factor, _, _) = v.t[0].t {
+    [
+        v.position[0] * factor,
+        v.position[1] * factor,
+        v.position[2] * factor
+    ]
+    } else { [0., 0., 0.] }
+}
+
+fn projected_origin_distance(v1: [f32; 3], v2: [f32; 3], v3: [f32; 3]) -> f32 {
+    let vec_ab = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+    let vec_ac = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+
+    let normal_vector = [
+        vec_ab[1] * vec_ac[2] - vec_ac[1] * vec_ab[2],
+        vec_ab[2] * vec_ac[0] - vec_ac[2] * vec_ab[0],
+        vec_ab[0] * vec_ac[1] - vec_ac[0] * vec_ab[1],
+    ];
+    
+    let distance = f32::abs(
+        normal_vector[0] * v1[0] + normal_vector[1] * v1[1] + normal_vector[2] * v1[2]
+    ) / (normal_vector[0].powi(2) + normal_vector[1].powi(2) + normal_vector[2].powi(2)).sqrt();
+
+    distance
+}
+
+// TODO Remove and specify the timing of each interior frequency to `geodesic_sphere`.
+/// Same as geodesic_sphere, but expects `base_model` to be any geodesic sphere. The difference is that no optimizations will be made here (although there could be, but different ones).
 #[allow(unused)]
 fn refine_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> Model {
     assert!(
