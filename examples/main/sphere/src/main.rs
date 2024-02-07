@@ -13,13 +13,12 @@ use vera_core::Vera;
 
 fn main() {
     let mut v = Vera::init(get());
-    v.show();
+    while v.show() {
+        v.reset(get())
+    };
 }
 fn get() -> Input {
-    unsafe {
-        D_TRANSFORMATION_START_TIME = 0.;
-        D_TRANSFORMATION_END_TIME = 0.;
-    }
+    // // Geodesic division of Tetrahedron, Octahedron and Icosahedron
 
     // Frequencies can generally go over 100, it's just a bit of loading after that.
     // let sphere1 = geodesic_sphere(tetrahedron(), 20, 2., 5.); 
@@ -38,31 +37,158 @@ fn get() -> Input {
     // println!("- {} triangles.", sphere3.vertices.len()/3);
     // println!("- {} vertices.", (sphere3.vertices.len()+12*1)/6);
 
-    let sphere1 = geodesic_sphere(icosahedron(), 1, 0., 0.);
-    let sphere2 = geodesic_sphere(icosahedron(), 2, 0., 0.);
-    let sphere3 = geodesic_sphere(icosahedron(), 3, 0., 0.);
-    let sphere4 = geodesic_sphere(icosahedron(), 4, 0., 0.);
-    let sphere5 = geodesic_sphere(icosahedron(), 5, 0., 0.);
-    let sphere6 = geodesic_sphere(icosahedron(), 6, 0., 0.);
-    let sphere7 = geodesic_sphere(icosahedron(), 7, 0., 0.);
-    let sphere8 = geodesic_sphere(icosahedron(), 8, 0., 0.);
-    let sphere9 = geodesic_sphere(icosahedron(), 9, 0., 0.);
-    let sphere10 = geodesic_sphere(icosahedron(), 10, 0., 0.);
-    let sphere11 = geodesic_sphere(icosahedron(), 11, 0., 0.);
-    let sphere12 = geodesic_sphere(icosahedron(), 12, 0., 0.);
-    let sphere13 = geodesic_sphere(icosahedron(), 13, 0., 0.);
-    let sphere14 = geodesic_sphere(icosahedron(), 14, 0., 0.);
-    let sphere15 = geodesic_sphere(icosahedron(), 15, 0., 0.);
-    let sphere16 = geodesic_sphere(icosahedron(), 16, 0., 0.);
-    let sphere17 = geodesic_sphere(icosahedron(), 17, 0., 0.);
-    let sphere18 = geodesic_sphere(icosahedron(), 18, 0., 0.);
-    let sphere19 = geodesic_sphere(icosahedron(), 19, 0., 0.);
+    // Input {
+    //     meta: MetaInput {
+    //         bg: [0.3, 0.3, 0.3, 0.3],
+    //         start: 0.0,
+    //         end: 14.0,
+    //     },
+    //     m: vec![
+    //         sphere1
+    //             .transform(Transformation::Scale(0.5, 0.5, 0.5)).start_t(0.0).end_t(0.0)
+    //             .transform(Transformation::Scale(2., 2., 2.)).start_t(1.0).end_t(2.0)
+    //             .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(5.0).end_t(6.0)
+    //             .transform(Transformation::RotateY(2.*PI)).start_t(2.0).end_t(5.0),
+    //         sphere2
+    //             .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+    //             .transform(Transformation::Scale(10., 10., 10.)).start_t(5.0).end_t(6.0)
+    //             .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(9.0).end_t(10.0)
+    //             .transform(Transformation::RotateY(2.*PI)).start_t(6.0).end_t(9.0),
+    //         sphere3
+    //             .transform(Transformation::Scale(0.1, 0.1, 0.1)).start_t(0.0).end_t(0.0)
+    //             .transform(Transformation::Scale(10., 10., 10.)).start_t(9.0).end_t(10.0)
+    //             .transform(Transformation::Scale(0.2, 0.2, 0.2)).start_t(13.0).end_t(14.0)
+    //             .transform(Transformation::RotateY(2.*PI)).start_t(10.0).end_t(13.0),
+    //     ],
+    //     v: View::new().transform(Transformation::Lookat(0., 0., -3., 0., 0., 0., 0., -1., 0.)),
+    //     p: Projection::new().transform(Transformation::Perspective(-0.1, 0.1, -0.1, 0.1, 0.2, 100.)),
+    // }
+
+
+
+
+    // // Triangle / Arrow / Sphere scene.
+    // unsafe {
+    //     D_TRANSFORMATION_START_TIME = -1.;
+    //     D_TRANSFORMATION_END_TIME = -1.;
+    //     D_COLORIZATION_START_TIME = -1.;
+    //     D_COLORIZATION_END_TIME = -1.;
+    // }
+    // 
+    // // Frequencies can generally go over 100, it's just a bit of loading after that.
+    // let triangle = Model::from_vertices(vec![
+    //     Vertex::new().pos(-2.0, -0.25, 0.0).rgba(1.0, 0.0, 0.0, 1.0)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(0.).end_c(2.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(2.).end_c(4.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(4.).end_c(6.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(6.).end_c(8.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(8.).end_c(10.),
+    //     Vertex::new().pos(-1.0, -0.25, 0.0).rgba(1.0, 0.0, 0.0, 1.0)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(0.).end_c(2.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(2.).end_c(4.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(4.).end_c(6.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(6.).end_c(8.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(8.).end_c(10.),
+    //     Vertex::new().pos(-1.5, 0.5, 0.0).rgba(1.0, 0.0, 0.0, 1.0)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(0.).end_c(2.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(2.).end_c(4.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(4.).end_c(6.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(6.).end_c(8.)
+    //     .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(8.).end_c(10.),
+    // ])
+    // .transform(Transformation::Translate(0.0, -0.125, 0.0));
+        // 
+    // let arrow = Model::from_vertices(vec![
+    //     Vertex::new().pos(-0.35, -0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos(-0.35,  0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25, -0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos(-0.35,  0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25, -0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25,  0.05, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     
+    //     Vertex::new().pos( 0.35,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.20,  0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.20,  0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.10,  0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     
+    //     Vertex::new().pos( 0.35,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.20, -0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.25,  0.00, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.20, -0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    //     Vertex::new().pos( 0.10, -0.15, 0.0).rgba(1.0, 0.0, 0.0, 1.0),
+    // ]);
+        // 
+    // let sphere = geodesic_sphere(icosahedron(), 50, -1., -1.)
+    // .recolor(Colorization::ToColor(1., 0., 0., 1.))
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(0.).end_c(1.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(1.).end_c(2.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(2.).end_c(3.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(3.).end_c(4.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(4.).end_c(5.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(5.).end_c(6.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(6.).end_c(7.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(7.).end_c(8.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(8.).end_c(9.)
+    // .recolor(Colorization::ToColor(1., f32(), f32(), 1.)).start_c(9.).end_c(10.)
+    // .transform(Transformation::Scale(0.5, 0.5, 0.5))
+    // .transform(Transformation::Translate(1.5, 0.0, 0.0));
+        // 
+    // Input {
+    //     meta: MetaInput {
+    //         bg: [0.1, 0.1, 0.1, 0.1],
+    //         start: -1.0,
+    //         end: 11.0,
+    //     },
+    //     m: vec![
+    //         triangle
+    //         .transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).transform(Transformation::Scale(10000.0, 10000.0, 10000.0)).start_t(0.).end_t(1.).evolution_t(Evolution::FastIn).transform(Transformation::RotateY(-3.0 * PI)).start_t(0.).end_t(10.).evolution_t(Evolution::FastMiddle).transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).start_t(9.).end_t(10.).evolution_t(Evolution::FastOut),
+    //         arrow
+    //         .transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).transform(Transformation::Scale(10000.0, 10000.0, 10000.0)).start_t(0.).end_t(1.).evolution_t(Evolution::FastIn).transform(Transformation::RotateY(-3.0 * PI)).start_t(0.).end_t(10.).evolution_t(Evolution::FastMiddle).transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).start_t(9.).end_t(10.).evolution_t(Evolution::FastOut),
+    //         sphere
+    //         .transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).transform(Transformation::Scale(10000.0, 10000.0, 10000.0)).start_t(0.).end_t(1.).evolution_t(Evolution::FastIn).transform(Transformation::RotateY(-3.0 * PI)).start_t(0.).end_t(10.).evolution_t(Evolution::FastMiddle).transform(Transformation::Scale(0.0001, 0.0001, 0.0001)).start_t(9.).end_t(10.).evolution_t(Evolution::FastOut),
+    //     ],
+    //     v: View::new().transform(Transformation::Lookat(0., 0., -3., 0., 0., 0., 0., -1., 0.)),
+    //     p: Projection::new().transform(Transformation::Perspective(-0.1, 0.1, -0.1, 0.1, 0.2, 100.)),
+    // }
+
+
+
+
+    // Display Icosahedron, divided with a frequency of 8.
+
+    unsafe {
+        D_TRANSFORMATION_START_TIME = 0.;
+        D_TRANSFORMATION_END_TIME = 0.;
+    }
+
+    // let sphere1 = geodesic_sphere(icosahedron(), 1, 0., 0.);
+    // let sphere2 = geodesic_sphere(icosahedron(), 2, 0., 0.);
+    // let sphere3 = geodesic_sphere(icosahedron(), 3, 0., 0.);
+    // let sphere4 = geodesic_sphere(icosahedron(), 4, 0., 0.);
+    // let sphere5 = geodesic_sphere(icosahedron(), 5, 0., 0.);
+    // let sphere6 = geodesic_sphere(icosahedron(), 6, 0., 0.);
+    // let sphere7 = geodesic_sphere(icosahedron(), 7, 0., 0.);
+    let sphere8 = geodesic_sphere(icosahedron(), 8, 0., 5.);
+    // let sphere9 = geodesic_sphere(icosahedron(), 9, 0., 0.);
+    // let sphere10 = geodesic_sphere(icosahedron(), 10, 0., 0.);
+    // let sphere11 = geodesic_sphere(icosahedron(), 11, 0., 0.);
+    // let sphere12 = geodesic_sphere(icosahedron(), 12, 0., 0.);
+    // let sphere13 = geodesic_sphere(icosahedron(), 13, 0., 0.);
+    // let sphere14 = geodesic_sphere(icosahedron(), 14, 0., 0.);
+    // let sphere15 = geodesic_sphere(icosahedron(), 15, 0., 0.);
+    // let sphere16 = geodesic_sphere(icosahedron(), 16, 0., 0.);
+    // let sphere17 = geodesic_sphere(icosahedron(), 17, 0., 0.);
+    // let sphere18 = geodesic_sphere(icosahedron(), 18, 0., 0.);
+    // let sphere19 = geodesic_sphere(icosahedron(), 19, 0., 0.);
 
     Input {
         meta: MetaInput {
-            bg: [0.3, 0.3, 0.3, 0.3],
+            bg: [0.1, 0.1, 0.1, 0.1],
             start: 0.0,
-            end: 14.0,
+            end: 10.0,
         },
         m: vec![
             // sphere1
@@ -88,7 +214,7 @@ fn get() -> Input {
             // sphere5,
             // sphere6,
             // sphere7,
-            sphere8,
+            sphere8.transform(Transformation::RotateY(PI * 4.0)).start_t(0.).end_t(10.0).evolution_t(vera::Evolution::FastMiddle),
             // sphere9,
             // sphere10,
             // sphere11,
