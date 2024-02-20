@@ -43,12 +43,16 @@ pub use model::*;
 /// A view, representation of a camera
 mod view;
 pub use view::*;
-/// A projection, defined the viewing frustrum.
+/// A projection, defines the viewing frustrum.
 mod projection;
 pub use projection::*;
 /// Transformations for vertices/models, views and projections.
 mod transform;
 pub use transform::*;
+
+/// Extensions, to avoid boilerplate in some cases.
+mod extensions;
+pub use extensions::*;
 
 /// The input of the Vera core. This is what you send when calling functions like `create()` or `reset()`.
 /// It contains everything that will be drawn and updated.

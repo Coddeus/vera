@@ -68,6 +68,7 @@ fn get() -> Input {
 
 
     // // Triangle / Arrow / Sphere scene.
+    // 
     // unsafe {
     //     D_TRANSFORMATION_START_TIME = -1.;
     //     D_TRANSFORMATION_END_TIME = -1.;
@@ -245,23 +246,29 @@ fn get() -> Input {
 /// Returns the modified model as well as the number of triangles in it in total.
 /// - `base_model` is expected to contain only vertices, a number of them which is a multiple of 3, and to either be 1. tetrahedron, 2. octahedron, or 3. icosahedron. The center of this base model should be the world origin.
 fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> Model {
+    let (
+        models,
+        vertices,
+        t,
+    ) = base_model.own_fields();
+
     assert!(
         frequency != 0 && 
-        base_model.models.is_empty() &&
-        !base_model.vertices.is_empty() &&
-        base_model.vertices.len()%3 == 0
+        models.is_empty() &&
+        !vertices.is_empty() &&
+        vertices.len()%3 == 0
     );
 
     // The number of lines the subtriangles form (in the case of layer 0, it is a point)
     let layers = frequency+1;
 
-    let sample_pos = base_model.vertices[0].position;
-    let radius = (sample_pos[0].powi(2) + sample_pos[1].powi(2) + sample_pos[2].powi(2)).sqrt();
+    let sample_pos = vertices[0].read_position();
+    let radius: f32 = (sample_pos[0].powi(2) + sample_pos[1].powi(2) + sample_pos[2].powi(2)).sqrt();
 
     let subpoints = ((frequency+1) * (frequency+2) / 2) as usize;
     let mut projection_multipliers: Vec<f32> = Vec::with_capacity(subpoints);
 
-    let all_vertices: Vec<Vertex> = base_model.vertices.into_iter().chunks(3).into_iter().enumerate().flat_map(|(base_triangle_i, mut v)| {
+    let all_vertices: Vec<Vertex> = vertices.into_iter().chunks(3).into_iter().enumerate().flat_map(|(base_triangle_i, mut v)| {
         // Finding all vertices
         // The following iterates through each layer and each of its points to find the vertices and their coordinates.
         let face_red = (f32()+1.)/2.;
@@ -284,7 +291,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
                 let layer_points = layer_i+1;
                 let unprojected_first: Vertex = new_vertex_unprojected(&v0, &v1, layer_i, layers-1);
                 let unprojected_last: Vertex = new_vertex_unprojected(&v0, &v2, layer_i, layers-1);
-                let new_mult = radius/(unprojected_first.position[0].powi(2) + unprojected_first.position[1].powi(2) + unprojected_first.position[2].powi(2)).sqrt();
+                let new_mult = radius/(unprojected_first.read_position()[0].powi(2) + unprojected_first.read_position()[1].powi(2) + unprojected_first.read_position()[2].powi(2)).sqrt();
 
                 // Point 0
                 vertices.push(unprojected_first.duplicate().transform(Transformation::Scale(new_mult, new_mult, new_mult)).start_t(start).end_t(end));
@@ -293,7 +300,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
                 // Points 1 to penultimate
                 for point_i in 1..layer_points-1 {
                     let unprojected_point = new_vertex_unprojected(&unprojected_first, &unprojected_last, point_i, layer_points-1);
-                    let new_mult = radius/(unprojected_point.position[0].powi(2) + unprojected_point.position[1].powi(2) + unprojected_point.position[2].powi(2)).sqrt();
+                    let new_mult = radius/(unprojected_point.read_position()[0].powi(2) + unprojected_point.read_position()[1].powi(2) + unprojected_point.read_position()[2].powi(2)).sqrt();
                     vertices.push(unprojected_point.transform(Transformation::Scale(new_mult, new_mult, new_mult)).start_t(start).end_t(end));
                     projection_multipliers.push(new_mult);
                 }
@@ -313,7 +320,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
             let layer_points = layers;
             for point_i in 1..layer_points-1 {
                 let unprojected_point = new_vertex_unprojected(&v1, &v2, point_i, layer_points-1);
-                let new_mult = radius/(unprojected_point.position[0].powi(2) + unprojected_point.position[1].powi(2) + unprojected_point.position[2].powi(2)).sqrt();
+                let new_mult = radius/(unprojected_point.read_position()[0].powi(2) + unprojected_point.read_position()[1].powi(2) + unprojected_point.read_position()[2].powi(2)).sqrt();
                 vertices.push(unprojected_point.transform(Transformation::Scale(new_mult, new_mult, new_mult)).start_t(start).end_t(end));
                 projection_multipliers.push(new_mult);
             }
@@ -425,7 +432,7 @@ fn geodesic_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> M
     }).collect();
     
     let mut out = Model::from_vertices(all_vertices);
-    out.t = base_model.t;
+    out.set_t(t);
     out
 }
 
@@ -445,11 +452,11 @@ fn print_ratio(v1: &Vertex, v2: &Vertex, v3: &Vertex, freq: u32) {
 
 /// Finds the end position of a vertex which only transformation is a scale, uniform between the axis.
 fn end_position(v: &Vertex) -> [f32; 3] {
-    if let Transformation::Scale(factor, _, _) = v.t[0].t {
+    if let Transformation::Scale(factor, _, _) = *v.read_tf()[0].read_t() {
     [
-        v.position[0] * factor,
-        v.position[1] * factor,
-        v.position[2] * factor
+        v.read_position()[0] * factor,
+        v.read_position()[1] * factor,
+        v.read_position()[2] * factor
     ]
     } else { [0., 0., 0.] }
 }
@@ -475,19 +482,25 @@ fn projected_origin_distance(v1: [f32; 3], v2: [f32; 3], v3: [f32; 3]) -> f32 {
 /// Same as geodesic_sphere, but expects `base_model` to be any geodesic sphere. The difference is that no optimizations will be made here (although there could be, but different ones).
 #[allow(unused)]
 fn refine_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> Model {
+    let (
+        models,
+        vertices,
+        t,
+    ) = base_model.own_fields();
+
     assert!(
         frequency != 0 && 
-        base_model.models.is_empty() &&
-        !base_model.vertices.is_empty() &&
-        base_model.vertices.len()%3 == 0
+        models.is_empty() &&
+        !vertices.is_empty() &&
+        vertices.len()%3 == 0
     );
 
     // The number of lines the subtriangles form (in the case of layer 0, it is a point)
     let layers = frequency+1;
 
-    let mut sample_pos = base_model.vertices[1].position;
-    for t_i in base_model.vertices[1].t.iter() {
-        if let Transformation::Scale(mult, _, _) = t_i.t {
+    let mut sample_pos = vertices[1].read_position().clone();
+    for t_i in vertices[1].read_tf().iter() {
+        if let Transformation::Scale(mult, _, _) = *t[0].read_t() {
             sample_pos[0]*=mult;
             sample_pos[1]*=mult;
             sample_pos[2]*=mult;
@@ -499,7 +512,7 @@ fn refine_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> Mod
 
     let subpoints = ((frequency+1) * (frequency+2) / 2) as usize;
 
-    let all_vertices: Vec<Vertex> = base_model.vertices.into_iter().chunks(3).into_iter().flat_map(|mut v| {
+    let all_vertices: Vec<Vertex> = vertices.into_iter().chunks(3).into_iter().flat_map(|mut v| {
         // Finding all vertices
         // The following iterates through each layer and each of its points to find the vertices and their coordinates.
         let mut vertices: Vec<Vertex> = Vec::with_capacity(subpoints);
@@ -585,9 +598,9 @@ fn refine_sphere(base_model: Model, frequency: u32, start: f32, end: f32) -> Mod
 /// Returns a vertex on the line which goes from V1 to V2, at V/W.
 fn new_vertex_unprojected(v1: &Vertex, v2: &Vertex, v: u32, w: u32) -> Vertex {
     assert!(v<w);
-    let x = (v1.position[0] * (w-v) as f32 + v2.position[0] * v as f32) / w as f32;
-    let y = (v1.position[1] * (w-v) as f32 + v2.position[1] * v as f32) / w as f32;
-    let z = (v1.position[2] * (w-v) as f32 + v2.position[2] * v as f32) / w as f32;
+    let x = (v1.read_position()[0] * (w-v) as f32 + v2.read_position()[0] * v as f32) / w as f32;
+    let y = (v1.read_position()[1] * (w-v) as f32 + v2.read_position()[1] * v as f32) / w as f32;
+    let z = (v1.read_position()[2] * (w-v) as f32 + v2.read_position()[2] * v as f32) / w as f32;
 
     Vertex::new().pos(x, y, z)
 }
@@ -595,14 +608,15 @@ fn new_vertex_unprojected(v1: &Vertex, v2: &Vertex, v: u32, w: u32) -> Vertex {
 /// Returns a vertex on the line which goes from V1 to V2, at V/W, with the same transformations and colorizations as v1.
 fn new_vertex_unprojected_cloned(v1: &Vertex, v2: &Vertex, v: u32, w: u32) -> Vertex {
     assert!(v<w);
-    let x = (v1.position[0] * (w-v) as f32 + v2.position[0] * v as f32) / w as f32;
-    let y = (v1.position[1] * (w-v) as f32 + v2.position[1] * v as f32) / w as f32;
-    let z = (v1.position[2] * (w-v) as f32 + v2.position[2] * v as f32) / w as f32;
+    let x = (v1.read_position()[0] * (w-v) as f32 + v2.read_position()[0] * v as f32) / w as f32;
+    let y = (v1.read_position()[1] * (w-v) as f32 + v2.read_position()[1] * v as f32) / w as f32;
+    let z = (v1.read_position()[2] * (w-v) as f32 + v2.read_position()[2] * v as f32) / w as f32;
 
     let out = (*v1).clone();
     out.pos(x, y, z)
 }
 
+#[allow(unused)]
 /// The base Tetrahedron
 fn tetrahedron() -> Model {
     let mult = 1./3.0f32.sqrt();
@@ -614,6 +628,7 @@ fn tetrahedron() -> Model {
     ]).transform(Transformation::Scale(mult, mult, mult)).start_t(0.).end_t(0.)
 }
 
+#[allow(unused)]
 /// The base Octahedron
 fn octahedron() -> Model {
     Model::from_vertices(vec![
@@ -667,9 +682,9 @@ trait Project<T> {
 impl Project<Vertex> for Vertex {
     // Rotates linearly by pi around a y axis with an X offset from START to END CLOCKWISE
     fn scale_to_rad(self: Self, rad: f32, start: f32, end: f32) -> Self {
-        let [mut x, mut y, mut z, _] = self.position;
-        self.t.iter().for_each(|t| {
-            if let Transformation::Scale(factor, _, _) = t.t {
+        let [mut x, mut y, mut z, _] = self.read_position();
+        self.read_tf().iter().for_each(|t| {
+            if let Transformation::Scale(factor, _, _) = *t.read_t() {
                 x*=factor;
                 y*=factor;
                 z*=factor;

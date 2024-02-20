@@ -12,8 +12,9 @@ keywords = ["animation", "vulkan", "videos", "graphics", "renderer"]
 categories = ["graphics", "multimedia::video", "rendering::engine"]
 
 [dependencies]
-# Least possible
+# No vulkano
 fastrand = "^2.0"
+image = "0.24.8"
 
 [profile.dev]
 opt-level = 0

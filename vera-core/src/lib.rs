@@ -564,9 +564,11 @@ mod vs {
 
             layout(location = 0) in vec4 position;
             layout(location = 1) in vec4 color;
-            layout(location = 2) in uvec4 entity_id;
+            layout(location = 2) in vec2 tex_coord;
+            layout(location = 3) in uvec2 entity_id;
 
             layout(location = 0) out vec4 out_color;
+            layout(location = 1) out vec2 tex_coord_out;
 
             layout(set = 0, binding = 6) readonly buffer Entities {
                 Entity data[];
@@ -591,6 +593,9 @@ mod vs {
                 pos *= gen.mat;
                 
                 gl_Position = pos;
+
+
+                tex_coord_out = tex_coord;
             }
         ",
     }
@@ -605,9 +610,13 @@ mod fs {
             layout(location = 0) out vec4 f_color;
 
             layout(location = 0) in vec4 in_color;
+            layout(location = 1) in vec2 tex_coords;
+
+            // layout(set = 0, binding = 10) uniform sampler s;
+            // layout(set = 0, binding = 11) uniform texture2D tex;
 
             void main() {
-                f_color = in_color;
+                f_color = in_color; // mix(texture(sampler2D(tex, s), tex_coords), in_color, 0.5)
             }
         ",
     }
@@ -641,7 +650,7 @@ impl Vera {
                     height: 600,
                 })
                 .with_resizable(true)
-                .with_decorations(true)         // TODOFEATURES
+                .with_decorations(false)         // TODOFEATURES
                 .with_title("Vera")
                 .with_transparent(false)
                 .build(&event_loop)
@@ -930,6 +939,8 @@ impl Vera {
                 WriteDescriptorSet::buffer(7, modelt_buffer.clone()),
                 // WriteDescriptorSet::buffer(8, model_matrixtransformer_buffer.clone()),
                 // WriteDescriptorSet::buffer(9, model_matrixtransformation_buffer.clone()),
+                // WriteDescriptorSet::buffer(10, currentsampler_buffer.clone()),
+                // WriteDescriptorSet::buffer(11, currenttex_buffer.clone()),
             ],
             [],
         )
@@ -1275,16 +1286,8 @@ fn from_input(
     ),
 ) {
     // Meta and general (CPU and push constants)
-    let Input {
-        meta,
-        m,
-        v: View {
-            t: view_t,
-        },
-        p: Projection {
-            t: projection_t,
-        },
-    } = input;
+    let view_t = input.v.own_fields();
+    let projection_t = input.p.own_fields();
 
     let general_push_vs: VSGeneral = VSGeneral {
         mat: [
@@ -1314,7 +1317,7 @@ fn from_input(
         mut vertex_colortransformer_data,
         mut model_matrixtransformation_data,
         mut model_matrixtransformer_data
-    ) = from_model(Model::from_models(m), 0, &mut entity_index, &mut vertex_matrixtransformation_offset, &mut vertex_colortransformation_offset, &mut model_matrixtransformation_offset);
+    ) = from_model(Model::from_models(input.m), 0, &mut entity_index, &mut vertex_matrixtransformation_offset, &mut vertex_colortransformation_offset, &mut model_matrixtransformation_offset);
 
     fn from_model(
         model: Model,
@@ -1327,6 +1330,12 @@ fn from_input(
         let current_id= *entity_index;
         *entity_index+=1;
 
+        let (
+            m_models,
+            m_vertices,
+            m_t,
+        ) = model.own_fields();
+
         let mut basevertex: Vec<BaseVertex> = vec![];
         let mut entity: Vec<Entity> = vec![];
     
@@ -1335,35 +1344,44 @@ fn from_input(
         let mut vertex_colortransformation: Vec<ColorTransformation> = vec![];
         let mut vertex_colortransformer: Vec<ColorTransformer> = vec![];
     
-        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(model.t);
+        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(m_t);
         let mmt_len = model_matrixtransformation.len() as u32;
         let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, *model_matrixtransformation_offset)];
         *model_matrixtransformation_offset+=mmt_len;
 
-        for v in model.vertices.into_iter() {
+        for v in m_vertices.into_iter() {
+            let (
+                v_position,
+                v_color,
+                v_tex_coord,
+                _v_tex_id,
+                v_t,
+                v_c,
+            ) = v.own_fields();
             basevertex.push(BaseVertex {
-                position: v.position,
-                color: v.color.clone(),
+                position: v_position,
+                color: v_color.clone(),
+                tex_coord: v_tex_coord,
                 entity_id: Padded(current_id),
             });
 
-            let gpu_tf = to_gpu_tf(v.t);
+            let gpu_tf = to_gpu_tf(v_t);
             let vmt_len = gpu_tf.len() as u32;
             vertex_matrixtransformation.extend(gpu_tf);
             vertex_matrixtransformer.push(MatrixTransformer::from_lo(vmt_len, *vertex_matrixtransformation_offset));
             *vertex_matrixtransformation_offset+=vmt_len;
             
-            let gpu_cl = to_gpu_cl(v.c);
+            let gpu_cl = to_gpu_cl(v_c);
             let vmt_len = gpu_cl.len() as u32;
             vertex_colortransformation.extend(gpu_cl);
-            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, *vertex_colortransformation_offset, v.color));
+            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, *vertex_colortransformation_offset, v_color));
             *vertex_colortransformation_offset+=vmt_len;
         }
 
         entity.push(Entity {
             parent_id: Padded(parent_id),
         });
-        for m in model.models.into_iter() {
+        for m in m_models.into_iter() {
             let (
                 m_basevertex,
                 m_entity,
@@ -1577,7 +1595,7 @@ fn from_input(
     println!("model_matrixtransformation_offset: {}", model_matrixtransformation_offset);
 
     (
-        (meta.bg, meta.start, meta.end, vertex_dispatch_len, model_dispatch_len),
+        (input.meta.bg, input.meta.start, input.meta.end, vertex_dispatch_len, model_dispatch_len),
         (general_push_cs, general_push_vs, general_push_transformer),
         (
             vsinput_buffer,
@@ -1599,7 +1617,7 @@ fn from_input(
 fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
     let mut gpu_tf: Vec<MatrixTransformation> = vec![];
     for tf in t.into_iter() {
-        let (ty, val) = match tf.t {
+        let (ty, val) = match *tf.read_t() {
             Transformation::Scale(x, y, z) => (0, [x, y, z]),
             Transformation::Translate(x, y, z) => (1, [x, y, z]),
             Transformation::RotateX(angle) => (2, [angle, 0.0, 0.0]),
@@ -1607,7 +1625,7 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
             Transformation::RotateZ(angle) => (4, [angle, 0.0, 0.0]),
             _ => { println!("Vertex/Model transformation not implemented, ignoring."); continue; },
         };
-        let evolution = match tf.e {
+        let evolution = match *tf.read_e() {
             Evolution::Linear => 0,
             Evolution::FastIn | Evolution::SlowOut => 1,
             Evolution::FastOut | Evolution::SlowIn => 2,
@@ -1617,8 +1635,8 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
         gpu_tf.push(MatrixTransformation {
             val,
             ty,
-            start: tf.start,
-            end: tf.end,
+            start: *tf.read_start(),
+            end: *tf.read_end(),
             evolution: Padded(evolution),
         })
     }
@@ -1629,11 +1647,11 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
 fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
     let mut gpu_cl: Vec<ColorTransformation> = vec![];
     for cl in t.into_iter() {
-        let (ty, val) = match cl.c {
+        let (ty, val) = match *cl.read_c() {
             Colorization::ToColor(r, g, b, a) => (0, [r, g, b, a]),
             // _ => { println!("Vertex colorization not implemented, ignoring."); continue; },
         };
-        let evolution = match cl.e {
+        let evolution = match *cl.read_e() {
             Evolution::Linear => 0,
             Evolution::FastIn | Evolution::SlowOut => 1,
             Evolution::FastOut | Evolution::SlowIn => 2,
@@ -1643,8 +1661,8 @@ fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
         gpu_cl.push(ColorTransformation {
             val,
             ty,
-            start: cl.start,
-            end: cl.end,
+            start: *cl.read_start(),
+            end: *cl.read_end(),
             evolution,
         })
     }

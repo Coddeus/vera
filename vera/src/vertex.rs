@@ -15,19 +15,24 @@ use crate::{
 /// - a 3D XYZ position;
 /// - an RGBA color;
 /// - (A Vec of transformations);
+/// - (A Vec of colorizations);
 ///
 /// Vertices enable building Triangles, which enable building all other shapes.
 #[derive(Clone, Debug)]
 pub struct Vertex {
     // Sent to GPU
-    /// The position of the vertex.
-    pub position: [f32; 4],
+    /// The position of the vertex, XYZW.
+    position: [f32; 4],
     /// The color of the vertex, in RGBA format.
-    pub color: [f32; 4],
+    color: [f32; 4],
+    /// The coordinates of the vertex in the texture.
+    tex_coord: [f32; 2],
+    /// The id of the texture this vertex is linked to. 0 if none.
+    tex_id: u32,
 
     // Treated in CPU
-    pub t: Vec<Tf>,
-    pub c: Vec<Cl>,
+    t: Vec<Tf>,
+    c: Vec<Cl>,
 }
 impl Vertex {
     /// A new default Vertex. Call this method to initialize a vertex, before transforming it.
@@ -53,21 +58,88 @@ impl Vertex {
                         super::D_VERTEX_ALPHA,
                     ]
                 },
+                tex_coord: [0.0, 0.0],
+                tex_id: 0,
                 t: vec![],
                 c: vec![],
             }
         }
     }
 
-    /// Creates a new vertex with the base position and color of `self`
+    /// Creates a new vertex with the base position and color of `self`.
     pub fn duplicate(&self) -> Self{
         Self {
             position: self.position,
             color: self.color,
+            tex_coord: [0.0, 0.0],
+            tex_id: 0,
             t: vec![],
             c: vec![],
         }
     }
+
+    /// Returns all the fields. Consumes `self`.
+    pub fn own_fields(self) -> ([f32; 4], [f32; 4], [f32; 2], u32, Vec<Tf>, Vec<Cl>) {
+        (
+            self.position,
+            self.color,
+            self.tex_coord,
+            self.tex_id,
+            self.t,
+            self.c,
+        )
+    }
+
+    /// Reads the position data.
+    pub fn read_position(&self) -> &[f32; 4] {
+        &self.position
+    }
+    /// Reads the color data.
+    pub fn read_color(&self) -> &[f32; 4] {
+        &self.color
+    }
+    /// Reads the tex_coord data.
+    pub fn read_tex_coord(&self) -> &[f32; 2] {
+        &self.tex_coord
+    }
+    /// Reads the tex_id data.
+    pub fn read_tex_id(&self) -> &u32 {
+        &self.tex_id
+    }
+    /// Reads the c data.
+    pub fn read_c(&self) -> &Vec<Cl> {
+        &self.c
+    }
+    /// Reads the t data.
+    pub fn read_tf(&self) -> &Vec<Tf> {
+        &self.t
+    }
+
+    /// Gets a mutable reference to the position data.
+    pub fn get_position(&mut self) -> &[f32; 4] {
+        &self.position
+    }
+    /// Gets a mutable reference to the color data.
+    pub fn get_color(&mut self) -> &mut [f32; 4] {
+        &mut self.color
+    }
+    /// Gets a mutable reference to the tex_coord data.
+    pub fn get_tex_coord(&mut self) -> &mut [f32; 2] {
+        &mut self.tex_coord
+    }
+    /// Gets a mutable reference to the tex_id data.
+    pub fn get_tex_id(&mut self) -> &mut u32 {
+        &mut self.tex_id
+    }
+    /// Gets a mutable reference to the c data.
+    pub fn get_c(&mut self) -> &mut Vec<Cl> {
+        &mut self.c
+    }
+    /// Gets a mutable reference to the t data.
+    pub fn get_tf(&mut self) -> &mut Vec<Tf> {
+        &mut self.t
+    }
+
 
     /// Modifies the position of the vertex to (x, y, z).
     pub fn pos(mut self, x: f32, y: f32, z: f32) -> Self {
@@ -124,6 +196,14 @@ impl Vertex {
     /// Sets the alpha of the vertex and ends the method calls pipe.
     pub(crate) fn set_alpha(&mut self, alpha: f32) {
         self.color[3] = alpha;
+    }
+
+    // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+    /// Sets the alpha of the vertex and ends the method calls pipe.
+    pub(crate) fn tex(&mut self, id: u32, coord: [f32; 2]) {
+        self.tex_id = id;
+        self.tex_coord = coord;
     }
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
