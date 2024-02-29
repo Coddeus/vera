@@ -6,7 +6,7 @@ use crate::{
 /// A projection (a projection defines the frustrum inside which objects are seen).
 /// - `t` are the runtime transformations of the projection.
 pub struct Projection {
-    pub t: Vec<Tf>,
+    t: Vec<Tf>,
 }
 
 impl Projection {
@@ -14,6 +14,11 @@ impl Projection {
         Self {
             t: vec![]
         }
+    }
+
+    #[allow(unused_parens)]
+    pub fn own_fields(self) -> (Vec<Tf>) {
+        self.t
     }
 
     /// Adds a new transformation to the overall projection with default speed evolution, start time and end time.

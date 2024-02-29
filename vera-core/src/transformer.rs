@@ -80,9 +80,9 @@ impl Transformer {
 
         let mut buffer_matrix = self.result;
         self.current.iter().for_each(|tf| {
-            let adv: f32 = advancement(tf.start, tf.end, time, tf.e);
+            let adv: f32 = advancement(*tf.read_start(), *tf.read_end(), time, *tf.read_e());
             if adv>0.0 {
-                buffer_matrix.interpolate(Mat4::from_t(tf.t, 1.0), adv);
+                buffer_matrix.interpolate(Mat4::from_t(*tf.read_t(), 1.0), adv);
             }
         });
         buffer_matrix

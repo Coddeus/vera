@@ -14,15 +14,16 @@ pub use matrix::*;
 pub mod transformer;
 #[allow(unused_imports)]
 pub use transformer::*;
-
-use vera::{Input, Model, Tf, View, Projection, Transformation, Evolution, Colorization, Cl};
-use vulkano::padded::Padded;
-use vulkano::pipeline::compute::ComputePipelineCreateInfo;
-use vulkano::pipeline::graphics::depth_stencil::{DepthStencilState, DepthState};
+use winit::monitor::{MonitorHandle, VideoMode};
 
 use std::sync::Arc;
 use std::time::Instant;
 
+use vera::{Input, Model, Tf, Transformation, Evolution, Colorization, Cl};
+use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
+use vulkano::padded::Padded;
+use vulkano::pipeline::compute::ComputePipelineCreateInfo;
+use vulkano::pipeline::graphics::depth_stencil::{DepthStencilState, DepthState};
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::pipeline::graphics::color_blend::{
@@ -36,15 +37,14 @@ use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer, BufferContents};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo,
-    PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
+    AutoCommandBufferBuilder, CommandBufferExecFuture, CommandBufferUsage, CopyBufferInfo, CopyBufferToImageInfo, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract, RenderPassBeginInfo
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageUsage, ImageCreateInfo, ImageType, SampleCount};
+use vulkano::image::{Image, ImageCreateInfo, ImageFormatInfo, ImageType, ImageUsage, SampleCount};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::memory::allocator::{
     AllocationCreateInfo, FreeListAllocator, GenericMemoryAllocator, MemoryTypeFilter,
@@ -66,13 +66,13 @@ use vulkano::swapchain::{
 };
 use vulkano::sync::future::{FenceSignalFuture, JoinFuture};
 use vulkano::sync::{self, GpuFuture};
-use vulkano::{Validated, Version};
+use vulkano::{DeviceSize, Validated, Version};
 
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::platform::run_return::EventLoopExtRunReturn;
-use winit::window::{Window, WindowBuilder};
+use winit::window::{Fullscreen, Window, WindowBuilder};
 
 /// The struct the user interacts with.
 pub struct Vera {
@@ -156,6 +156,10 @@ struct Vk {
 
     model_matrixtransformation_buffer: Subbuffer<[MatrixTransformation]>,
     model_matrixtransformer_buffer: Subbuffer<[MatrixTransformer]>,
+
+
+    text_texture: Arc<ImageView>,
+    text_sampler: Arc<Sampler>,
 }
 
 mod vertex_cs {
@@ -173,7 +177,9 @@ mod vertex_cs {
             struct BaseVertex {
                 vec4 position;
                 vec4 color;
-                uint entity_id; // Index in t.d
+                vec2 tex_coord; // Index in t.d
+                uint tex_id;
+                uint entity_id;
             };
             struct MatrixTransformation {
                 vec3 val; // The values of this transformation, interpreted depending on the type.
@@ -562,11 +568,20 @@ mod vs {
                 mat4 mat;
             };
 
+            //  Inputs
+            // Vertex
             layout(location = 0) in vec4 position;
             layout(location = 1) in vec4 color;
-            layout(location = 2) in uvec4 entity_id;
+            // Texture
+            layout(location = 4) in vec2 tex_coord;
+            layout(location = 3) in uint tex_id;
+            // Model
+            layout(location = 2) in uint entity_id;
 
+            //  Outputs
             layout(location = 0) out vec4 out_color;
+            layout(location = 1) out uint tex_id_out;
+            layout(location = 2) out vec2 tex_coord_out;
 
             layout(set = 0, binding = 6) readonly buffer Entities {
                 Entity data[];
@@ -581,7 +596,7 @@ mod vs {
             void main() {
                 vec4 pos = position;
                 out_color = color;
-                uint model_id=entity_id.x;
+                uint model_id=entity_id;
 
                 while (model_id>0) {
                     pos *= _mod.data[model_id].mat;
@@ -591,6 +606,10 @@ mod vs {
                 pos *= gen.mat;
                 
                 gl_Position = pos;
+
+
+                tex_id_out = tex_id;
+                tex_coord_out = tex_coord;
             }
         ",
     }
@@ -605,9 +624,26 @@ mod fs {
             layout(location = 0) out vec4 f_color;
 
             layout(location = 0) in vec4 in_color;
+            layout(location = 1) in flat uint tex_id;
+            layout(location = 2) in vec2 tex_coords;
+
+            layout(set = 0, binding = 10) uniform sampler s;
+            layout(set = 0, binding = 11) uniform texture2D tex;
+
+
+            float median(float r, float g, float b) {
+                return max(min(r, g), min(max(r, g), b));
+            }
 
             void main() {
                 f_color = in_color;
+                if (tex_id == 1) {
+                    vec3 msd = texture(sampler2D(tex, s), tex_coords).rgb;
+                    float sd = median(msd.r, msd.g, msd.b);
+                    float screenPxDistance = 2.0*(sd - 0.5);
+                    float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
+                    f_color = vec4(in_color.rgb, opacity * in_color.a);
+                }
             }
         ",
     }
@@ -637,13 +673,14 @@ impl Vera {
         let window = Arc::new(
             WindowBuilder::new()
                 .with_inner_size(LogicalSize {
-                    width: 800,
-                    height: 600,
+                    width: 1900,
+                    height: 1000,
                 })
                 .with_resizable(true)
-                .with_decorations(true)         // TODOFEATURES
+                .with_decorations(false)         // TODOFEATURES
                 .with_title("Vera")
                 .with_transparent(false)
+                .with_maximized(true)
                 .build(&event_loop)
                 .unwrap(),
         );
@@ -839,6 +876,84 @@ impl Vera {
             ),
         ) = from_input(queue.clone(), memory_allocator.clone(), &cb_allocator, input);
 
+        let mut uploads = AutoCommandBufferBuilder::primary(
+            &cb_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let text_texture: Arc<ImageView> = {
+            let png_bytes = include_bytes!("fonts/cmunti_msdf_100_005_rgba.png").as_slice();
+            let decoder = png::Decoder::new(png_bytes);
+            let mut reader = decoder.read_info().unwrap();
+            let info = reader.info();
+            // let channels = info.color_type;
+            // println!("{:?}", channels);
+            let extent = [info.width, info.height, 1];
+    
+            let upload_buffer = Buffer::new_slice(
+                memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                (info.width * info.height * 4) as DeviceSize,
+            )
+            .unwrap();
+    
+            reader
+                .next_frame(&mut upload_buffer.write().unwrap())
+                .unwrap();
+    
+            let image = Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::R8G8B8A8_SRGB,
+                    extent,
+                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap();
+    
+            uploads
+                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                    upload_buffer,
+                    image.clone(),
+                ))
+                .unwrap();
+            uploads
+                .build()
+                .unwrap()
+                .execute(queue.clone())
+                .unwrap()
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap();
+    
+            ImageView::new_default(image).unwrap()
+        };
+    
+        let text_sampler: Arc<Sampler> = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         // -------
 
         // Graphics pipeline & Drawing command buffer
@@ -930,6 +1045,8 @@ impl Vera {
                 WriteDescriptorSet::buffer(7, modelt_buffer.clone()),
                 // WriteDescriptorSet::buffer(8, model_matrixtransformer_buffer.clone()),
                 // WriteDescriptorSet::buffer(9, model_matrixtransformation_buffer.clone()),
+                WriteDescriptorSet::sampler(10, text_sampler.clone()),
+                WriteDescriptorSet::image_view(11, text_texture.clone()),
             ],
             [],
         )
@@ -1098,6 +1215,9 @@ impl Vera {
                 model_matrixtransformation_buffer,
                 model_matrixtransformer_buffer,
 
+
+                text_texture,
+                text_sampler,
             },
         }
     }
@@ -1159,6 +1279,8 @@ impl Vera {
                 WriteDescriptorSet::buffer(7, self.vk.modelt_buffer.clone()),
                 // WriteDescriptorSet::buffer(8, self.vk.model_matrixtransformer_buffer.clone()),
                 // WriteDescriptorSet::buffer(9, self.vk.model_matrixtransformation_buffer.clone()),
+                WriteDescriptorSet::sampler(10, self.vk.text_sampler.clone()),
+                WriteDescriptorSet::image_view(11, self.vk.text_texture.clone()),
             ],
             [],
         )
@@ -1275,16 +1397,8 @@ fn from_input(
     ),
 ) {
     // Meta and general (CPU and push constants)
-    let Input {
-        meta,
-        m,
-        v: View {
-            t: view_t,
-        },
-        p: Projection {
-            t: projection_t,
-        },
-    } = input;
+    let view_t = input.v.own_fields();
+    let projection_t = input.p.own_fields();
 
     let general_push_vs: VSGeneral = VSGeneral {
         mat: [
@@ -1314,7 +1428,7 @@ fn from_input(
         mut vertex_colortransformer_data,
         mut model_matrixtransformation_data,
         mut model_matrixtransformer_data
-    ) = from_model(Model::from_models(m), 0, &mut entity_index, &mut vertex_matrixtransformation_offset, &mut vertex_colortransformation_offset, &mut model_matrixtransformation_offset);
+    ) = from_model(Model::from_models(input.m), 0, &mut entity_index, &mut vertex_matrixtransformation_offset, &mut vertex_colortransformation_offset, &mut model_matrixtransformation_offset);
 
     fn from_model(
         model: Model,
@@ -1327,6 +1441,12 @@ fn from_input(
         let current_id= *entity_index;
         *entity_index+=1;
 
+        let (
+            m_models,
+            m_vertices,
+            m_t,
+        ) = model.own_fields();
+
         let mut basevertex: Vec<BaseVertex> = vec![];
         let mut entity: Vec<Entity> = vec![];
     
@@ -1335,35 +1455,45 @@ fn from_input(
         let mut vertex_colortransformation: Vec<ColorTransformation> = vec![];
         let mut vertex_colortransformer: Vec<ColorTransformer> = vec![];
     
-        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(model.t);
+        let mut model_matrixtransformation: Vec<MatrixTransformation> = to_gpu_tf(m_t);
         let mmt_len = model_matrixtransformation.len() as u32;
         let mut model_matrixtransformer: Vec<MatrixTransformer> = vec![MatrixTransformer::from_lo(mmt_len, *model_matrixtransformation_offset)];
         *model_matrixtransformation_offset+=mmt_len;
 
-        for v in model.vertices.into_iter() {
+        for v in m_vertices.into_iter() {
+            let (
+                v_position,
+                v_color,
+                v_tex_coord,
+                v_tex_id,
+                v_t,
+                v_c,
+            ) = v.own_fields();
             basevertex.push(BaseVertex {
-                position: v.position,
-                color: v.color.clone(),
-                entity_id: Padded(current_id),
+                position: v_position,
+                color: v_color.clone(),
+                tex_coord: v_tex_coord,
+                tex_id: v_tex_id,
+                entity_id: current_id,
             });
 
-            let gpu_tf = to_gpu_tf(v.t);
+            let gpu_tf = to_gpu_tf(v_t);
             let vmt_len = gpu_tf.len() as u32;
             vertex_matrixtransformation.extend(gpu_tf);
             vertex_matrixtransformer.push(MatrixTransformer::from_lo(vmt_len, *vertex_matrixtransformation_offset));
             *vertex_matrixtransformation_offset+=vmt_len;
             
-            let gpu_cl = to_gpu_cl(v.c);
+            let gpu_cl = to_gpu_cl(v_c);
             let vmt_len = gpu_cl.len() as u32;
             vertex_colortransformation.extend(gpu_cl);
-            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, *vertex_colortransformation_offset, v.color));
+            vertex_colortransformer.push(ColorTransformer::from_loc(vmt_len, *vertex_colortransformation_offset, v_color));
             *vertex_colortransformation_offset+=vmt_len;
         }
 
         entity.push(Entity {
             parent_id: Padded(parent_id),
         });
-        for m in model.models.into_iter() {
+        for m in m_models.into_iter() {
             let (
                 m_basevertex,
                 m_entity,
@@ -1561,23 +1691,23 @@ fn from_input(
 
     // Info
 
-    println!("vsinput size: {}", vsinput_buffer.size());
-    println!("basevertex size: {}", basevertex_buffer.size());
-    println!("entity size: {}", entity_buffer.size());
-    println!("modelt size: {}", modelt_buffer.size());
-    println!("vertex_matrixtransformation size: {}", vertex_matrixtransformation_buffer.size());
-    println!("vertex_matrixtransformer size: {}", vertex_matrixtransformer_buffer.size());
-    println!("vertex_colortransformation size: {}", vertex_colortransformation_buffer.size());
-    println!("vertex_colortransformer size: {}", vertex_colortransformer_buffer.size());
-    println!("model_matrixtransformation size: {}", model_matrixtransformation_buffer.size());
-    println!("model_matrixtransformer size: {}", model_matrixtransformer_buffer.size());
-    println!("entity_index: {}", entity_index);
-    println!("vertex_matrixtransformation_offset: {}", vertex_matrixtransformation_offset);
-    println!("vertex_colortransformation_offset: {}", vertex_colortransformation_offset);
-    println!("model_matrixtransformation_offset: {}", model_matrixtransformation_offset);
+    dbg!("vsinput size: {}", vsinput_buffer.size());
+    dbg!("basevertex size: {}", basevertex_buffer.size());
+    dbg!("entity size: {}", entity_buffer.size());
+    dbg!("modelt size: {}", modelt_buffer.size());
+    dbg!("vertex_matrixtransformation size: {}", vertex_matrixtransformation_buffer.size());
+    dbg!("vertex_matrixtransformer size: {}", vertex_matrixtransformer_buffer.size());
+    dbg!("vertex_colortransformation size: {}", vertex_colortransformation_buffer.size());
+    dbg!("vertex_colortransformer size: {}", vertex_colortransformer_buffer.size());
+    dbg!("model_matrixtransformation size: {}", model_matrixtransformation_buffer.size());
+    dbg!("model_matrixtransformer size: {}", model_matrixtransformer_buffer.size());
+    dbg!("entity_index: {}", entity_index);
+    dbg!("vertex_matrixtransformation_offset: {}", vertex_matrixtransformation_offset);
+    dbg!("vertex_colortransformation_offset: {}", vertex_colortransformation_offset);
+    dbg!("model_matrixtransformation_offset: {}", model_matrixtransformation_offset);
 
     (
-        (meta.bg, meta.start, meta.end, vertex_dispatch_len, model_dispatch_len),
+        (input.meta.bg, input.meta.start, input.meta.end, vertex_dispatch_len, model_dispatch_len),
         (general_push_cs, general_push_vs, general_push_transformer),
         (
             vsinput_buffer,
@@ -1599,7 +1729,7 @@ fn from_input(
 fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
     let mut gpu_tf: Vec<MatrixTransformation> = vec![];
     for tf in t.into_iter() {
-        let (ty, val) = match tf.t {
+        let (ty, val) = match *tf.read_t() {
             Transformation::Scale(x, y, z) => (0, [x, y, z]),
             Transformation::Translate(x, y, z) => (1, [x, y, z]),
             Transformation::RotateX(angle) => (2, [angle, 0.0, 0.0]),
@@ -1607,7 +1737,7 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
             Transformation::RotateZ(angle) => (4, [angle, 0.0, 0.0]),
             _ => { println!("Vertex/Model transformation not implemented, ignoring."); continue; },
         };
-        let evolution = match tf.e {
+        let evolution = match *tf.read_e() {
             Evolution::Linear => 0,
             Evolution::FastIn | Evolution::SlowOut => 1,
             Evolution::FastOut | Evolution::SlowIn => 2,
@@ -1617,8 +1747,8 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
         gpu_tf.push(MatrixTransformation {
             val,
             ty,
-            start: tf.start,
-            end: tf.end,
+            start: *tf.read_start(),
+            end: *tf.read_end(),
             evolution: Padded(evolution),
         })
     }
@@ -1629,11 +1759,11 @@ fn to_gpu_tf(t: Vec<Tf>) -> Vec<MatrixTransformation> {
 fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
     let mut gpu_cl: Vec<ColorTransformation> = vec![];
     for cl in t.into_iter() {
-        let (ty, val) = match cl.c {
+        let (ty, val) = match *cl.read_c() {
             Colorization::ToColor(r, g, b, a) => (0, [r, g, b, a]),
             // _ => { println!("Vertex colorization not implemented, ignoring."); continue; },
         };
-        let evolution = match cl.e {
+        let evolution = match *cl.read_e() {
             Evolution::Linear => 0,
             Evolution::FastIn | Evolution::SlowOut => 1,
             Evolution::FastOut | Evolution::SlowIn => 2,
@@ -1643,8 +1773,8 @@ fn to_gpu_cl(t: Vec<Cl>) -> Vec<ColorTransformation> {
         gpu_cl.push(ColorTransformation {
             val,
             ty,
-            start: cl.start,
-            end: cl.end,
+            start: *cl.read_start(),
+            end: *cl.read_end(),
             evolution,
         })
     }
@@ -1936,6 +2066,8 @@ impl Vk {
                 Default::default(), //vulkano::command_buffer::SubpassBeginInfo { contents: SubpassContents::Inline, ..Default::default() },
             )
             .unwrap()
+            .push_constants(self.draw_pipeline.layout().clone(), 0, self.general_push_vs.clone())
+            .unwrap()
             .bind_pipeline_graphics(self.draw_pipeline.clone())
             .unwrap()
             .bind_descriptor_sets(
@@ -1946,8 +2078,6 @@ impl Vk {
             )
             .unwrap()
             .bind_vertex_buffers(0, self.vsinput_buffer.clone())
-            .unwrap()
-            .push_constants(self.draw_pipeline.layout().clone(), 0, self.general_push_vs.clone())
             .unwrap()
             .draw(self.vsinput_buffer.len() as u32, 1, 0, 0)
             .unwrap()

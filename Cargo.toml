@@ -2,12 +2,12 @@
 members = [
     "vera",
     "vera-core",
-    "examples/main/*",
+    "examples/main/*", "mre",
 ]
 resolver = "2"
 
 [workspace.dependencies.vera-core]
-version = "0.2.0"
+version = "0.3.0"
 path = "vera-core"
 
 [workspace.dependencies.vera]

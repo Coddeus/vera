@@ -3,7 +3,6 @@
     ".\\examples\\dev\\lib\\Cargo.toml",
     ".\\examples\\dev\\Cargo.toml",
     ".\\vera\\Cargo.toml",
-    ".\\vera\\Cargo.toml"
   ],
-  "workbench.colorTheme": "Atom One Dark"
+  "workbench.colorTheme": "Palenight (Mild Contrast)"
 }

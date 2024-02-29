@@ -31,13 +31,28 @@ pub enum Evolution {
 #[derive(Clone, Copy, Debug)]
 pub struct Tf {
     /// The type & value of the transformation.
-    pub t: Transformation,
+    pub(crate) t: Transformation,
     /// The speed evolution of the transformation.
-    pub e: Evolution,
+    pub(crate) e: Evolution,
     /// The start time of the transformation.
-    pub start: f32,
+    pub(crate) start: f32,
     /// The end time of the transformation.
-    pub end: f32,
+    pub(crate) end: f32,
+}
+
+impl Tf {
+    pub fn read_t(&self) -> &Transformation {
+        &self.t
+    }
+    pub fn read_e(&self) -> &Evolution {
+        &self.e
+    }
+    pub fn read_start(&self) -> &f32 {
+        &self.start
+    }
+    pub fn read_end(&self) -> &f32 {
+        &self.end
+    }
 }
 
 /// The available transformations.  
@@ -83,13 +98,28 @@ pub enum Transformation {
 #[derive(Debug, Clone, Copy)]
 pub struct Cl {
     /// The type & value of the colorization.
-    pub c: Colorization,
+    pub(crate) c: Colorization,
     /// The speed evolution of the colorization.
-    pub e: Evolution,
+    pub(crate) e: Evolution,
     /// The start time of the colorization.
-    pub start: f32,
+    pub(crate) start: f32,
     /// The end time of the colorization.
-    pub end: f32,
+    pub(crate) end: f32,
+}
+
+impl Cl {
+    pub fn read_c(&self) -> &Colorization {
+        &self.c
+    }
+    pub fn read_e(&self) -> &Evolution {
+        &self.e
+    }
+    pub fn read_start(&self) -> &f32 {
+        &self.start
+    }
+    pub fn read_end(&self) -> &f32 {
+        &self.end
+    }
 }
 
 /// The available colorizations.  

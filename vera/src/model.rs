@@ -7,13 +7,13 @@ use crate::{
 /// A model (a model is a shape).
 /// 1 model = 1 entity.   
 /// - `models` are the models contained inside of this one.
-/// - `vertices` are the vertices of the model, each group of three `Vertex` forming a triangle. Still, you can have the vertices of a same triangle belonging to different models, if you wish.
+/// - `vertices` are the vertices of the model (not the submodels), each group of three `Vertex` forming a triangle. Still, you can have the vertices of a same triangle belonging to different models, if you wish.
 /// - `t` are the runtime transformations of the model.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Model {
     pub models: Vec<Model>,
     pub vertices: Vec<Vertex>,
-    pub t: Vec<Tf>,
+    t: Vec<Tf>,
 }
 impl Model {
     /// Groups `vertices` and `models` in a new model, with empty transformations.
@@ -40,6 +40,15 @@ impl Model {
             vertices,
             t: vec![],
         }
+    }
+
+    /// Returns all the fields. Consumes `self`.
+    pub fn own_fields(self) -> (Vec<Model>, Vec<Vertex>, Vec<Tf>) {
+        (
+            self.models,
+            self.vertices,
+            self.t,
+        )
     }
 
     /// Sets the model's (and submodels') vertices rgb color values.
@@ -97,11 +106,15 @@ impl Model {
         self
     }
 
+    pub fn set_t(&mut self, t: Vec<Tf>) {
+        self.t = t
+    }
+
     /// Adds a new color change to every descendant vertex, with default speed evolution, start time and end time.
     /// # Don't
     /// DO NOT call this function in multithreaded scenarios, as it calls static mut. See [the crate root](super).
     pub fn recolor(mut self, colorization: Colorization) -> Self {
-        self.vertices.iter_mut().for_each(|v| { v.c.push(Cl {
+        self.vertices.iter_mut().for_each(|v| { v.get_c().push(Cl {
             c: colorization,
             e: unsafe { D_COLORIZATION_SPEED_EVOLUTION },
             start: unsafe { D_COLORIZATION_START_TIME },
@@ -112,21 +125,21 @@ impl Model {
 
     /// Modifies the speed evolution of the latest colorization added.
     pub fn evolution_c(mut self, e: Evolution) -> Self {
-        self.vertices.iter_mut().for_each(|v| { v.c.last_mut().unwrap().e = e; });
+        self.vertices.iter_mut().for_each(|v| { v.get_c().last_mut().unwrap().e = e; });
         self
     }
 
     /// Modifies the start time of the latest colorization added.
     /// A start after an end will result in the colorization being instantaneous at start.
     pub fn start_c(mut self, start: f32) -> Self {
-        self.vertices.iter_mut().for_each(|v| { v.c.last_mut().unwrap().start = start; });
+        self.vertices.iter_mut().for_each(|v| { v.get_c().last_mut().unwrap().start = start; });
         self
     }
 
     /// Modifies the end time of the latest colorization added.
     /// An end before a start will result in the colorization being instantaneous at start.
     pub fn end_c(mut self, end: f32) -> Self {
-        self.vertices.iter_mut().for_each(|v| { v.c.last_mut().unwrap().end = end; });
+        self.vertices.iter_mut().for_each(|v| { v.get_c().last_mut().unwrap().end = end; });
         self
     }
 
@@ -151,11 +164,6 @@ impl Model {
     }
 }
 
-/// A triangle model
-pub struct Triangle;
-
-impl Triangle {
-    pub fn new(v1: Vertex, v2: Vertex, v3: Vertex) -> Model {
-        Model::from_vertices(vec![v1, v2, v3])
-    }
+pub trait ToModel {
+    fn model(self) -> Model;
 }

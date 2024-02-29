@@ -6,7 +6,7 @@ use crate::{
 /// A view (a view represents the position, direction and angle of a camera).
 /// - `t` are the runtime transformations of the view.
 pub struct View {
-    pub t: Vec<Tf>,
+    t: Vec<Tf>,
 }
 
 impl View {
@@ -14,6 +14,11 @@ impl View {
         Self {
             t: vec![]
         }
+    }
+
+    #[allow(unused_parens)]
+    pub fn own_fields(self) -> (Vec<Tf>) {
+        self.t
     }
 
     /// Adds a new transformation to the overall view with default speed evolution, start time and end time.

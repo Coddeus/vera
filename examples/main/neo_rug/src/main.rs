@@ -1,6 +1,7 @@
 //! This example was made before animation was implemented. It calculates vertices directly for a static image.
 
 use vera::*;
+use vera::shapes::*;
 use vera_core::*;
 
 fn main() {
@@ -20,7 +21,7 @@ fn get() -> Input {
         .map(|n| {
             Model::from_models({
                 vec![
-                    Triangle::new(
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos((n / 10 - 5) as f32 / 5.0, (n % 10 - 5) as f32 / 5.0, 0.0)
                             .rgb(0.0, 1.0, 1.0),
@@ -38,8 +39,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(1.0, 0.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 0.5) / 5.0,
@@ -61,8 +62,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(0.0, 1.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 0.5) / 5.0,
@@ -84,8 +85,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(1.0, 0.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 1.0) / 5.0,
@@ -107,8 +108,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(0.0, 1.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 1.0) / 5.0,
@@ -130,8 +131,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(1.0, 0.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 1.0) / 5.0,
@@ -153,8 +154,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(0.0, 1.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 0.5) / 5.0,
@@ -176,8 +177,8 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(1.0, 0.0, 1.0),
-                    ),
-                    Triangle::new(
+                    ).model(),
+                    Triangle::from_vertices(
                         Vertex::new()
                             .pos(
                                 ((n / 10 - 5) as f32 + 0.5) / 5.0,
@@ -199,7 +200,7 @@ fn get() -> Input {
                                 0.0,
                             )
                             .rgb(0.0, 1.0, 1.0),
-                    ),
+                    ).model(),
                 ]
             })
         })
