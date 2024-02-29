@@ -11,8 +11,8 @@ use crate::{
 /// - `t` are the runtime transformations of the model.
 #[derive(Clone, Debug)]
 pub struct Model {
-    models: Vec<Model>,
-    vertices: Vec<Vertex>,
+    pub models: Vec<Model>,
+    pub vertices: Vec<Vertex>,
     t: Vec<Tf>,
 }
 impl Model {

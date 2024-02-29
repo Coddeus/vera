@@ -17,6 +17,8 @@ vulkano-shaders = "0.34.0"
 vulkano-win = "0.34.0"
 vulkano-macros = "0.34.0"
 winit = "0.28.7"
+png = "0.17.13"
+
 vera = { version = "0.3.0", path = "../vera" }
 
 

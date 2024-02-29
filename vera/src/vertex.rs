@@ -27,7 +27,7 @@ pub struct Vertex {
     color: [f32; 4],
     /// The coordinates of the vertex in the texture.
     tex_coord: [f32; 2],
-    /// The id of the texture this vertex is linked to. 0 if none.
+    /// The id of the texture this vertex is linked to. For now:  0 if none, 1 if text, Ignored otherwise.
     tex_id: u32,
 
     // Treated in CPU
@@ -200,10 +200,11 @@ impl Vertex {
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    /// Sets the alpha of the vertex and ends the method calls pipe.
-    pub(crate) fn tex(&mut self, id: u32, coord: [f32; 2]) {
+    /// Sets the texture data for this vertex. Crate-visible for now as this is for text only
+    pub(crate) fn tex(mut self, id: u32, coord: [f32; 2]) -> Self {
         self.tex_id = id;
         self.tex_coord = coord;
+        self
     }
 
     // -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

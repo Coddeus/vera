@@ -10,12 +10,15 @@ pub(crate) struct BaseVertex {
     /// The rgba color of this vertex.
     #[format(R32G32B32A32_SFLOAT)]
     pub(crate) color: [f32; 4],
-    /// The coordinates of this vertex.
+    /// The coordinates of the texture on this vertex.
     #[format(R32G32_SFLOAT)]
     pub(crate) tex_coord: [f32; 2],
-    /// The id of this vertex.
-    #[format(R32G32_UINT)]
-    pub(crate) entity_id: Padded<u32, 4>,
+    /// The id of the texture drawn on this vertex.
+    #[format(R32_UINT)]
+    pub(crate) tex_id: u32,
+    /// The id of the entity this vertex belongs to.
+    #[format(R32_UINT)]
+    pub(crate) entity_id: u32,
 }
 impl Default for BaseVertex {
     fn default() -> Self {
@@ -23,7 +26,8 @@ impl Default for BaseVertex {
             position: [0.0, 0.0, 0.0, 1.0],
             color: [0.5, 1.0, 0.8, 1.0],
             tex_coord: [0.0, 0.0],
-            entity_id: Padded(0),
+            tex_id: 0,
+            entity_id: 0,
         }
     }
 }
