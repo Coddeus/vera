@@ -8,15 +8,15 @@ fn main() {
         meta: MetaInput {
             bg: [0.1, 0.1, 0.1, 1.0],
             start: 0.0,
-            end: 20.0,
+            end: 10.0,
         },
         m: {
-            let small = Text::new("Small".to_owned(), 0.1, 0.0);
-            let big = Text::new("Big".to_owned(), 1.0, 0.0);
-            let hellotext = Text::new("Hello Colored Text!".to_owned(), 1.0, 0.0);
-            let iamspawning: Text = Text::new("I am spawning...".to_owned(), 1.0, 0.0);
-            let close: Text = Text::new("I am close".to_owned(), 0.8, -0.1);
-            let far: Text = Text::new("I am far".to_owned(), 0.8, 0.1);
+            let small = Text::new("Small".to_owned(), 0.1, 0.0, 1.0);
+            let big = Text::new("Big".to_owned(), 1.0, 0.0, 1.0);
+            let hellotext = Text::new("Hello Colored Text!".to_owned(), 1.0, 0.0, 1.0);
+            let iamspawning: Text = Text::new("I am spawning...".to_owned(), 1.0, 0.0, 1.0);
+            let close: Text = Text::new("I am close".to_owned(), 0.8, -0.1, 1.0);
+            let far: Text = Text::new("I am far".to_owned(), 0.8, 0.1, 1.0);
             let spawningtext = iamspawning.model().alpha(0.0);
             vec![
                 small.model()

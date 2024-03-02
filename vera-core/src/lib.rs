@@ -654,7 +654,13 @@ mod fs {
                     float alpha_sd = mtsd.a;
                     float screenPxDistanceAlpha = screenPxRange()*(alpha_sd - 0.5);
 
-                    float opacity = clamp(screenPxDistanceAlpha, 0.0, 1.0);
+                    float opacity = clamp(screenPxDistanceAlpha + 0.5, 0.0, 1.0);
+                    if (false) { // Outline
+                        float ud = abs(screenPxDistanceAlpha); // unsigned distance
+                        if (ud > 1.0) {
+                            opacity = 0.0;
+                        }
+                    }
                     f_color = vec4(in_color.rgb, opacity * in_color.a);
                     
                     // ----------------- Not working
