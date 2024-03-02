@@ -630,19 +630,45 @@ mod fs {
             layout(set = 0, binding = 10) uniform sampler s;
             layout(set = 0, binding = 11) uniform texture2D tex;
 
+            const vec2 unitRange = vec2(16.0/1920.0, 16.0/1920.0);
+
 
             float median(float r, float g, float b) {
                 return max(min(r, g), min(max(r, g), b));
             }
 
+            float screenPxRange() {
+                vec2 screenTexSize = vec2(1.0)/fwidth(tex_coords);
+                return max(0.5*dot(unitRange, screenTexSize), 1.0);
+            }
+
             void main() {
                 f_color = in_color;
-                if (tex_id == 1) {
-                    vec3 msd = texture(sampler2D(tex, s), tex_coords).rgb;
-                    float sd = median(msd.r, msd.g, msd.b);
-                    float screenPxDistance = 2.0*(sd - 0.5);
-                    float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
+                if (tex_id == 1) { // Is text
+                    // Signed distance field
+                    vec4 mtsd = texture(sampler2D(tex, s), tex_coords);
+
+                    // float rgb_sd = median(mtsd.r, mtsd.g, mtsd.b);
+                    // float screenPxDistance = screenPxRange()*(rgb_sd - 0.5);
+
+                    float alpha_sd = mtsd.a;
+                    float screenPxDistanceAlpha = screenPxRange()*(alpha_sd - 0.5);
+
+                    float opacity = clamp(screenPxDistanceAlpha, 0.0, 1.0);
                     f_color = vec4(in_color.rgb, opacity * in_color.a);
+                    
+                    // ----------------- Not working
+                    // // Simple signed distance field
+                    // float sd = texture(sampler2D(tex, s), tex_coords).r;
+                    // float screenPxDistance = screenPxRange() * sd;
+                    // float opacity = clamp(screenPxDistance, 0.0, 1.0);
+                    // f_color = vec4(in_color.rgb, in_color.a * opacity);
+
+
+                    // // Other ?  - Multi-channel
+
+                    // // float rgb_sd = median(mtsd.r, mtsd.g, mtsd.b);
+                    // // float screenPxDistance = screenPxRange()*(rgb_sd - 0.5);
                 }
             }
         ",
@@ -884,7 +910,7 @@ impl Vera {
         .unwrap();
 
         let text_texture: Arc<ImageView> = {
-            let png_bytes = include_bytes!("fonts/cmunti_msdf_100_005_rgba.png").as_slice();
+            let png_bytes = include_bytes!("fonts/cmunti_mtsdf_128_16.png").as_slice();
             let decoder = png::Decoder::new(png_bytes);
             let mut reader = decoder.read_info().unwrap();
             let info = reader.info();

@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 
 
 pub(crate) static CMUNTI: Lazy<FontData> = Lazy::new(||
-    font_from(include_str!("./fonts/cmunti_msdf_100_005.json"))
+    font_from(include_str!("./fonts/cmunti_mtsdf_128_16.json"))
 );
 
 fn font_from(serd_string: &str) -> FontData {
