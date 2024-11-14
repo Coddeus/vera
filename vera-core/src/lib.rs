@@ -1387,7 +1387,7 @@ impl Vera {
         }
     }
 
-    pub fn save(&mut self,/*  width: u32, height: u32 */) {
+    pub fn save(&mut self,/*  width: u32, height: u32, framerate: f32 */) {
         match self.vk.show(&mut self.event_loop) { // , (width, height)
             0 => {
                 // Successfully finished

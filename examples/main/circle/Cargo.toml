@@ -1,0 +1,8 @@
+[package]
+name = "circle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vera-core = { path = "../../../vera-core" }
+vera = { path = "../../../vera" }
